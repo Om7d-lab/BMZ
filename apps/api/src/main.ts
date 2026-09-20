@@ -53,8 +53,11 @@ async function bootstrap(): Promise<void> {
     logger.log('API documentation at /api/docs');
   }
 
-  const port = Number(config.get<number>('API_PORT') ?? 4000);
-  await app.listen(port);
+  // A managed host (Render, Railway, Fly, …) injects the port to bind on as
+  // PORT and expects the process to listen on it; API_PORT is the local
+  // default when nothing is injected.
+  const port = Number(process.env.PORT ?? config.get<number>('API_PORT') ?? 4000);
+  await app.listen(port, '0.0.0.0');
   logger.log(`BMZ Trade Lab API listening on port ${port}`);
 }
 

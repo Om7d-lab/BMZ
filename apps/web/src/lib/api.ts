@@ -1,7 +1,16 @@
 import type { ApiError } from '@bmz/contracts';
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
-export const API_BASE = `${API_URL}/api/v1`;
+/**
+ * Where API requests go.
+ *
+ * A server component talks to the API directly, so it needs the API's absolute
+ * origin (API_ORIGIN). The browser instead talks to this app's own origin and
+ * lets the Next.js rewrite (see next.config.ts) forward the request to the API,
+ * which keeps the SameSite=Lax auth cookie first-party. Both resolve to the
+ * same API in the end; only the base differs.
+ */
+const SERVER_API_ORIGIN = process.env.API_ORIGIN ?? 'http://localhost:4000';
+export const API_BASE = typeof window === 'undefined' ? `${SERVER_API_ORIGIN}/api/v1` : '/api/v1';
 
 /** The header that names which workspace a request acts in. */
 export const ORGANIZATION_HEADER = 'x-bmz-organization';

@@ -1,0 +1,60 @@
+# Render blueprint for the BMZ Trade Lab API and its PostgreSQL database.
+#
+# The Next.js web app is deployed to Vercel (see docs/DEPLOY.md); this file
+# provisions the backend it talks to. NestJS is a long-running server, which a
+# managed Node host runs well as-is — unlike a serverless platform, it needs no
+# adapter and holds a real database connection pool.
+#
+# Deploy: in the Render dashboard, New → Blueprint, point it at this repo. Render
+# reads this file, creates the database and the service, and wires DATABASE_URL
+# and the generated JWT secrets automatically. Two values are left for you to
+# fill in once the web app has a URL: WEB_URL and API_CORS_ORIGINS.
+
+databases:
+  - name: bmz-postgres
+    databaseName: bmz_trade_lab
+    user: bmz
+    plan: free
+
+services:
+  - type: web
+    name: bmz-api
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: main
+    # Install the workspace, generate the Prisma client, build the shared
+    # packages the API imports, then compile the API.
+    buildCommand: >-
+      corepack enable &&
+      pnpm install --frozen-lockfile &&
+      pnpm --filter @bmz/api db:generate &&
+      pnpm build:packages &&
+      pnpm --filter @bmz/api build
+    # Apply pending migrations before the new version starts taking traffic.
+    preDeployCommand: pnpm --filter @bmz/api db:deploy
+    startCommand: node apps/api/dist/main.js
+    healthCheckPath: /api/v1/health/live
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Render injects PORT; main.ts binds to it.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bmz-postgres
+          property: connectionString
+      # Generated once by Render and kept stable. The two must differ, which two
+      # independently generated values are.
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      # Production serves over HTTPS, so the auth cookies must be Secure.
+      - key: AUTH_COOKIE_SECURE
+        value: 'true'
+      # Fill these in after the web app is deployed to Vercel (its https URL,
+      # no trailing slash), e.g. https://bmz.vercel.app
+      - key: WEB_URL
+        sync: false
+      - key: API_CORS_ORIGINS
+        sync: false
