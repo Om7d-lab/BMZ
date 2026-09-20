@@ -1,0 +1,37 @@
+{
+  "name": "bmz-trade-lab",
+  "version": "0.1.0",
+  "private": true,
+  "description": "BMZ Trade Lab \u2014 a premium trading journal for serious traders.",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build:packages": "pnpm -r --filter=./packages/* build",
+    "build": "pnpm build:packages && pnpm --filter @bmz/api build && pnpm --filter @bmz/web build",
+    "dev": "pnpm --parallel --filter @bmz/api --filter @bmz/web dev",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm build:packages && pnpm -r typecheck",
+    "test": "pnpm build:packages && pnpm -r test",
+    "db:generate": "pnpm --filter @bmz/api db:generate",
+    "db:migrate": "pnpm --filter @bmz/api db:migrate",
+    "db:push": "pnpm --filter @bmz/api db:push",
+    "db:seed": "pnpm --filter @bmz/api db:seed",
+    "db:reset": "pnpm --filter @bmz/api db:reset",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "infra:nuke": "docker compose down -v"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.10.1",
+    "eslint": "10.11.0",
+    "prettier": "3.9.8",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.70.0"
+  }
+}

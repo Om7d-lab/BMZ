@@ -1,0 +1,63 @@
+{
+  "name": "@bmz/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "BMZ Trade Lab REST API.",
+  "scripts": {
+    "build": "nest build",
+    "dev": "nest start --watch",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:push": "prisma db push",
+    "db:reset": "prisma migrate reset --force",
+    "db:studio": "prisma studio",
+    "db:seed": "tsx prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@bmz/contracts": "workspace:*",
+    "@bmz/core": "workspace:*",
+    "@nestjs/common": "12.0.3",
+    "@nestjs/config": "12.0.0",
+    "@nestjs/core": "12.0.3",
+    "@nestjs/jwt": "12.0.2",
+    "@nestjs/platform-express": "12.0.3",
+    "@nestjs/swagger": "12.0.1",
+    "@nestjs/throttler": "6.7.0",
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "cookie-parser": "1.4.7",
+    "decimal.js": "10.6.0",
+    "dotenv": "18.0.1",
+    "helmet": "8.3.0",
+    "pg": "8.23.0",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "12.0.3",
+    "@nestjs/schematics": "12.0.3",
+    "@nestjs/testing": "12.0.3",
+    "@swc/core": "1.16.2",
+    "@types/cookie-parser": "1.4.10",
+    "@types/express": "5.0.6",
+    "@types/node": "24.10.1",
+    "@types/pg": "8.23.1",
+    "@types/supertest": "7.2.1",
+    "prisma": "7.10.0",
+    "supertest": "7.2.2",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "unplugin-swc": "1.6.0",
+    "vitest": "5.0.1"
+  }
+}

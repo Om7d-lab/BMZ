@@ -1,0 +1,1145 @@
+// BMZ Trade Lab — data model
+//
+// Two rules hold this schema together:
+//
+//  1. Every row a trader can see hangs off an `organizationId`. Nothing is
+//     queried without it, so a missing tenant filter is a compile-time-visible
+//     omission rather than a silent leak.
+//  2. Executions and import batches are an audit trail. Trades are derived
+//     state recomputed from their executions; executions are only ever
+//     appended and soft-deleted, never rewritten in place.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "esm"
+  // The API is an ESM package (NestJS 12 is ESM-only), so the client is
+  // generated as ESM too rather than being interop-loaded from CommonJS.
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Identity and tenancy
+// ---------------------------------------------------------------------------
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  emailVerifiedAt DateTime?
+  passwordHash    String
+  displayName     String
+  avatarUrl       String?
+
+  // Presentation preferences. `timezone` decides which calendar day a trade
+  // lands on, so it is a correctness setting, not a cosmetic one.
+  locale            String  @default("en")
+  timezone          String  @default("UTC")
+  preferredCurrency String  @default("USD")
+  isPlatformAdmin   Boolean @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  memberships       Membership[]
+  sessions          Session[]
+  ownedOrgs         Organization[]       @relation("OrganizationOwner")
+  verificationCodes VerificationToken[]
+  notes             Note[]
+  attachments       Attachment[]
+  auditLogs         AuditLog[]
+  dashboards        Dashboard[]
+  savedFilters      SavedFilter[]
+  progressChecks    ProgressCheck[]
+  sentInvites       OrganizationInvite[] @relation("InviteSender")
+  mentorLinks       MentorLink[]         @relation("MentorUser")
+  menteeLinks       MentorLink[]         @relation("MenteeUser")
+  mentorComments    MentorComment[]
+  conversations     AssistantConversation[]
+
+  @@index([deletedAt])
+  @@map("users")
+}
+
+/// A refresh-token family. Rotating a refresh token revokes the previous row
+/// and issues a successor, so a replayed token is detectable.
+model Session {
+  id        String @id @default(cuid())
+  userId    String
+  tokenHash String @unique
+
+  userAgent  String?
+  ipAddress  String?
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  /// Set when this token was rotated, pointing at its successor.
+  replacedBy String?
+  lastUsedAt DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+enum VerificationTokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+model VerificationToken {
+  id        String                @id @default(cuid())
+  userId    String
+  type      VerificationTokenType
+  tokenHash String                @unique
+  expiresAt DateTime
+  /// Single-use: set the moment the token is redeemed.
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@index([expiresAt])
+  @@map("verification_tokens")
+}
+
+/// A workspace. A solo trader gets one automatically at sign-up; teams, prop
+/// desks and mentors share one.
+model Organization {
+  id      String  @id @default(cuid())
+  name    String
+  slug    String  @unique
+  ownerId String
+  /// Free at launch. Plan gating is expressed through Entitlement rows so the
+  /// billing provider can change without touching authorisation code.
+  plan    String  @default("free")
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  owner User @relation("OrganizationOwner", fields: [ownerId], references: [id])
+
+  memberships       Membership[]
+  invites           OrganizationInvite[]
+  entitlements      Entitlement[]
+  billingCustomer   BillingCustomer?
+  accounts          Account[]
+  instruments       Instrument[]
+  trades            Trade[]
+  executions        Execution[]
+  tags              Tag[]
+  attachments       Attachment[]
+  tradingDays       TradingDay[]
+  notes             Note[]
+  noteFolders       NoteFolder[]
+  playbooks         Playbook[]
+  progressRules     ProgressRule[]
+  progressChecks    ProgressCheck[]
+  importBatches     ImportBatch[]
+  importMappings    ImportMapping[]
+  dashboards        Dashboard[]
+  savedFilters      SavedFilter[]
+  reportDefinitions ReportDefinition[]
+  shareLinks        ShareLink[]
+  brokerConnections BrokerConnection[]
+  auditLogs         AuditLog[]
+  mentorLinks       MentorLink[]
+  conversations     AssistantConversation[]
+
+  @@index([deletedAt])
+  @@map("organizations")
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  MEMBER
+  /// Read-only. Used for mentors and for shared review access.
+  VIEWER
+}
+
+model Membership {
+  id             String         @id @default(cuid())
+  organizationId String
+  userId         String
+  role           MembershipRole @default(MEMBER)
+  joinedAt       DateTime       @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+model OrganizationInvite {
+  id             String         @id @default(cuid())
+  organizationId String
+  email          String
+  role           MembershipRole @default(MEMBER)
+  tokenHash      String         @unique
+  invitedById    String
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime       @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User         @relation("InviteSender", fields: [invitedById], references: [id])
+
+  @@index([organizationId, email])
+  @@map("organization_invites")
+}
+
+/// A feature flag with an optional numeric ceiling, e.g.
+/// `{ feature: "accounts", limit: 3 }`. Authorisation reads these; nothing in
+/// the app branches on the plan name directly.
+model Entitlement {
+  id             String  @id @default(cuid())
+  organizationId String
+  feature        String
+  enabled        Boolean @default(true)
+  /// Null means unlimited.
+  limit          Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, feature])
+  @@map("entitlements")
+}
+
+/// Billing is abstracted behind this record so Stripe can be attached later
+/// without a schema change. Nobody is charged while `provider` is "none".
+model BillingCustomer {
+  id             String  @id @default(cuid())
+  organizationId String  @unique
+  provider       String  @default("none")
+  externalId     String?
+  status         String  @default("inactive")
+  currentPlan    String  @default("free")
+  trialEndsAt    DateTime?
+  metadata       Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("billing_customers")
+}
+
+// ---------------------------------------------------------------------------
+// Journal core
+// ---------------------------------------------------------------------------
+
+enum InstrumentClass {
+  STOCK
+  FUTURES
+  FOREX
+  CRYPTO
+  OPTION
+}
+
+enum AccountType {
+  LIVE
+  PAPER
+  PROP_EVALUATION
+  PROP_FUNDED
+  BACKTEST
+}
+
+model Account {
+  id             String      @id @default(cuid())
+  organizationId String
+  name           String
+  type           AccountType @default(LIVE)
+  broker         String?
+  /// Stored as supplied; never displayed in full.
+  accountNumber  String?
+  currency       String      @default("USD")
+
+  startingBalance Decimal @default(0) @db.Decimal(20, 6)
+  /// The timezone the trader's day boundary is drawn in for this account.
+  timezone        String  @default("UTC")
+
+  isArchived Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  trades            Trade[]
+  executions        Execution[]
+  tradingDays       TradingDay[]
+  importBatches     ImportBatch[]
+  brokerConnections BrokerConnection[]
+  mentorLinks       MentorLink[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, isArchived, deletedAt])
+  @@map("accounts")
+}
+
+/// A tradeable symbol, scoped per workspace so a trader can correct a
+/// multiplier or tick size without it leaking across tenants.
+model Instrument {
+  id              String          @id @default(cuid())
+  organizationId  String
+  symbol          String
+  instrumentClass InstrumentClass
+  description     String?
+  exchange        String?
+  currency        String          @default("USD")
+
+  /// Overrides the class default in @bmz/core when set.
+  multiplier     Decimal? @db.Decimal(20, 8)
+  tickSize       Decimal? @db.Decimal(20, 10)
+  pricePrecision Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  trades       Trade[]
+
+  @@unique([organizationId, symbol, instrumentClass])
+  @@index([organizationId, symbol])
+  @@map("instruments")
+}
+
+enum TradeDirection {
+  LONG
+  SHORT
+}
+
+enum TradeStatus {
+  OPEN
+  CLOSED
+}
+
+enum ReviewStatus {
+  UNREVIEWED
+  NEEDS_REVIEW
+  REVIEWED
+}
+
+/// A position from first entry to flat, derived from its executions.
+///
+/// Every numeric column below is recomputed by `@bmz/core` whenever the
+/// execution set changes. They are persisted rather than computed on read so
+/// the trade list, filters and reports can sort and aggregate in SQL.
+model Trade {
+  id             String  @id @default(cuid())
+  organizationId String
+  accountId      String
+  instrumentId   String?
+
+  /// Denormalised from the instrument so search and grouping stay single-table.
+  symbol          String
+  instrumentClass InstrumentClass
+  direction       TradeDirection
+  status          TradeStatus     @default(OPEN)
+
+  openedAt   DateTime
+  closedAt   DateTime?
+  durationMs BigInt?
+  /// The calendar day this trade belongs to, in the account timezone.
+  tradingDay DateTime? @db.Date
+
+  multiplier      Decimal  @default(1) @db.Decimal(20, 8)
+  peakQuantity    Decimal  @default(0) @db.Decimal(28, 10)
+  openQuantity    Decimal  @default(0) @db.Decimal(28, 10)
+  closedQuantity  Decimal  @default(0) @db.Decimal(28, 10)
+  averageEntryPrice Decimal? @db.Decimal(28, 10)
+  averageExitPrice  Decimal? @db.Decimal(28, 10)
+
+  /// The trader's plan, entered up front. `stopLoss` is what R is measured against.
+  stopLoss   Decimal? @db.Decimal(28, 10)
+  takeProfit Decimal? @db.Decimal(28, 10)
+
+  grossPnl Decimal @default(0) @db.Decimal(20, 6)
+  fees     Decimal @default(0) @db.Decimal(20, 6)
+  netPnl   Decimal @default(0) @db.Decimal(20, 6)
+
+  netReturn         Decimal? @db.Decimal(16, 8)
+  initialRisk       Decimal? @db.Decimal(20, 6)
+  rMultiple         Decimal? @db.Decimal(16, 6)
+  plannedRewardRisk Decimal? @db.Decimal(16, 6)
+  reversals         Int      @default(0)
+
+  /// Review metadata.
+  reviewStatus ReviewStatus @default(UNREVIEWED)
+  reviewedAt   DateTime?
+  /// Execution quality, 1-5. Deliberately separate from the P&L.
+  rating       Int?
+  notes        String?
+  playbookId   String?
+
+  /// Set when the trade arrived through an import, for rollback.
+  importBatchId String?
+  /// The broker's own identifier, used to deduplicate re-imports.
+  externalId    String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  account      Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  instrument   Instrument?  @relation(fields: [instrumentId], references: [id], onDelete: SetNull)
+  playbook     Playbook?    @relation(fields: [playbookId], references: [id], onDelete: SetNull)
+  importBatch  ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+
+  executions     Execution[]
+  tags           TradeTag[]
+  attachments    Attachment[]
+  ruleChecks     TradeRuleCheck[]
+  mentorComments MentorComment[]
+
+  @@unique([accountId, externalId])
+  // The trade list is always scoped to a workspace and sorted by entry time.
+  @@index([organizationId, openedAt(sort: Desc)])
+  @@index([organizationId, accountId, status, deletedAt])
+  @@index([organizationId, symbol])
+  @@index([organizationId, tradingDay])
+  @@index([organizationId, closedAt(sort: Desc)])
+  @@index([importBatchId])
+  @@map("trades")
+}
+
+enum ExecutionSide {
+  BUY
+  SELL
+}
+
+/// A single fill. Append-only: corrections are made by soft-deleting a row and
+/// adding a replacement, so the record of what the broker reported survives.
+model Execution {
+  id             String        @id @default(cuid())
+  organizationId String
+  accountId      String
+  tradeId        String
+  side           ExecutionSide
+
+  /// Always positive; the side carries the direction.
+  quantity Decimal @db.Decimal(28, 10)
+  price    Decimal @db.Decimal(28, 10)
+  /// Commission plus exchange and regulatory fees. Positive means a cost.
+  fees     Decimal @default(0) @db.Decimal(20, 6)
+
+  executedAt DateTime
+  orderId    String?
+  externalId String?
+  route      String?
+
+  importBatchId String?
+  createdAt     DateTime  @default(now())
+  deletedAt     DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  account      Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  trade        Trade        @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  importBatch  ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+
+  // Deduplication key for repeated CSV imports of overlapping date ranges.
+  @@unique([accountId, externalId])
+  @@index([tradeId, executedAt])
+  @@index([organizationId, executedAt(sort: Desc)])
+  @@index([importBatchId])
+  @@map("executions")
+}
+
+enum TagCategory {
+  SETUP
+  MISTAKE
+  EMOTION
+  CUSTOM
+}
+
+model Tag {
+  id             String      @id @default(cuid())
+  organizationId String
+  name           String
+  category       TagCategory @default(CUSTOM)
+  /// Hex colour used by the UI; falls back to a category default when null.
+  color          String?
+  description    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  trades       TradeTag[]
+  notes        NoteTag[]
+
+  @@unique([organizationId, category, name])
+  @@index([organizationId])
+  @@map("tags")
+}
+
+model TradeTag {
+  tradeId String
+  tagId   String
+
+  trade Trade @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  tag   Tag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([tradeId, tagId])
+  @@index([tagId])
+  @@map("trade_tags")
+}
+
+model Attachment {
+  id             String @id @default(cuid())
+  organizationId String
+  /// Object key in S3-compatible storage. Never served directly; reads go
+  /// through a signed URL issued after an authorisation check.
+  storageKey     String @unique
+  fileName       String
+  mimeType       String
+  sizeBytes      Int
+  uploadedById   String
+
+  tradeId      String?
+  noteId       String?
+  tradingDayId String?
+
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  uploadedBy   User         @relation(fields: [uploadedById], references: [id])
+  trade        Trade?       @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  note         Note?        @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  tradingDay   TradingDay?  @relation(fields: [tradingDayId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([tradeId])
+  @@index([noteId])
+  @@map("attachments")
+}
+
+/// The day journal: one row per account per calendar day, carrying the
+/// trader's plan, their review, and cached totals for the calendar view.
+model TradingDay {
+  id             String   @id @default(cuid())
+  organizationId String
+  accountId      String?
+  date           DateTime @db.Date
+
+  /// Written before the session.
+  plan          String?
+  /// Written after the session.
+  review        String?
+  /// Self-reported, 1-5.
+  moodBefore    Int?
+  moodAfter     Int?
+  /// Cached from the day's trades so the calendar renders in one query.
+  netPnl        Decimal  @default(0) @db.Decimal(20, 6)
+  tradeCount    Int      @default(0)
+  winCount      Int      @default(0)
+  lossCount     Int      @default(0)
+
+  /// Once the end-of-day review is locked, the plan and review become
+  /// read-only. Locking is what makes the progress streak mean anything.
+  isLocked DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  account      Account?     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  attachments  Attachment[]
+
+  @@unique([organizationId, accountId, date])
+  @@index([organizationId, date(sort: Desc)])
+  @@map("trading_days")
+}
+
+// ---------------------------------------------------------------------------
+// Notebook
+// ---------------------------------------------------------------------------
+
+model NoteFolder {
+  id             String  @id @default(cuid())
+  organizationId String
+  parentId       String?
+  name           String
+  position       Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent       NoteFolder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children     NoteFolder[] @relation("FolderTree")
+  notes        Note[]
+
+  @@index([organizationId, parentId])
+  @@map("note_folders")
+}
+
+model Note {
+  id             String  @id @default(cuid())
+  organizationId String
+  folderId       String?
+  authorId       String
+  title          String  @default("Untitled")
+
+  /// Rich text as a portable document tree. Markdown is kept alongside it so
+  /// search, exports and the AI assistant have a plain-text view to read.
+  content         Json?
+  contentPlain    String?
+  isPinned        Boolean @default(false)
+
+  /// Autosave writes here on a debounce; the trader never presses save.
+  autosavedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  /// Soft delete feeds a 30-day recovery bin.
+  deletedAt   DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  folder       NoteFolder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  author       User         @relation(fields: [authorId], references: [id])
+  tags         NoteTag[]
+  attachments  Attachment[]
+
+  @@index([organizationId, updatedAt(sort: Desc)])
+  @@index([organizationId, folderId, deletedAt])
+  @@map("notes")
+}
+
+model NoteTag {
+  noteId String
+  tagId  String
+
+  note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([noteId, tagId])
+  @@index([tagId])
+  @@map("note_tags")
+}
+
+enum ShareResourceType {
+  TRADE
+  NOTE
+  TRADING_DAY
+  REPORT
+}
+
+/// A read-only public link to one resource. Revocable, expiring and
+/// optionally password-protected, because these get posted in group chats.
+model ShareLink {
+  id             String            @id @default(cuid())
+  organizationId String
+  resourceType   ShareResourceType
+  resourceId     String
+  slug           String            @unique
+  passwordHash   String?
+  expiresAt      DateTime?
+  revokedAt      DateTime?
+  viewCount      Int               @default(0)
+  createdById    String
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, resourceType, resourceId])
+  @@map("share_links")
+}
+
+// ---------------------------------------------------------------------------
+// Playbooks and progress rules
+// ---------------------------------------------------------------------------
+
+enum PlaybookStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+model Playbook {
+  id             String         @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  status         PlaybookStatus @default(DRAFT)
+  color          String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ruleGroups   PlaybookRuleGroup[]
+  trades       Trade[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
+  @@map("playbooks")
+}
+
+model PlaybookRuleGroup {
+  id         String @id @default(cuid())
+  playbookId String
+  name       String
+  position   Int    @default(0)
+
+  playbook Playbook       @relation(fields: [playbookId], references: [id], onDelete: Cascade)
+  rules    PlaybookRule[]
+
+  @@index([playbookId, position])
+  @@map("playbook_rule_groups")
+}
+
+model PlaybookRule {
+  id       String  @id @default(cuid())
+  groupId  String
+  text     String
+  /// A required rule counts against adherence; an optional one is guidance.
+  isRequired Boolean @default(true)
+  position   Int     @default(0)
+
+  group  PlaybookRuleGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  checks TradeRuleCheck[]
+
+  @@index([groupId, position])
+  @@map("playbook_rules")
+}
+
+/// Whether a trade honoured one playbook rule. Adherence is the share of
+/// required rules marked followed.
+model TradeRuleCheck {
+  id       String  @id @default(cuid())
+  tradeId  String
+  ruleId   String
+  followed Boolean
+  note     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trade Trade        @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  rule  PlaybookRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@unique([tradeId, ruleId])
+  @@index([ruleId])
+  @@map("trade_rule_checks")
+}
+
+enum ProgressPhase {
+  PREPARE
+  TRADE
+  REFLECT
+}
+
+/// A recurring daily commitment, grouped into the three phases of a session.
+model ProgressRule {
+  id             String        @id @default(cuid())
+  organizationId String
+  phase          ProgressPhase
+  title          String
+  description    String?
+  isActive       Boolean       @default(true)
+  position       Int           @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  checks       ProgressCheck[]
+
+  @@index([organizationId, phase, position])
+  @@map("progress_rules")
+}
+
+model ProgressCheck {
+  id             String   @id @default(cuid())
+  organizationId String
+  ruleId         String
+  userId         String
+  date           DateTime @db.Date
+  completedAt    DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  rule         ProgressRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleId, userId, date])
+  @@index([organizationId, date(sort: Desc)])
+  @@map("progress_checks")
+}
+
+// ---------------------------------------------------------------------------
+// Imports
+// ---------------------------------------------------------------------------
+
+enum ImportSource {
+  MANUAL
+  CSV
+  BROKER_SYNC
+}
+
+enum ImportStatus {
+  PENDING
+  MAPPING
+  PROCESSING
+  COMPLETED
+  PARTIAL
+  FAILED
+  ROLLED_BACK
+}
+
+/// One import run. Every trade and execution it created points back here, so
+/// a bad import is undone by deleting its batch rather than by hand.
+model ImportBatch {
+  id             String       @id @default(cuid())
+  organizationId String
+  accountId      String
+  source         ImportSource
+  status         ImportStatus @default(PENDING)
+
+  fileName   String?
+  storageKey String?
+  mappingId  String?
+
+  rowCount            Int @default(0)
+  createdTradeCount   Int @default(0)
+  createdExecutionCount Int @default(0)
+  duplicateCount      Int @default(0)
+  errorCount          Int @default(0)
+  /// Per-row failures: `[{ row, column, message }]`. Kept so the trader can
+  /// fix the source file rather than guess.
+  errors Json?
+
+  startedAt    DateTime?
+  completedAt  DateTime?
+  rolledBackAt DateTime?
+  createdById  String
+
+  createdAt DateTime @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  account      Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  mapping      ImportMapping? @relation(fields: [mappingId], references: [id], onDelete: SetNull)
+  trades       Trade[]
+  executions   Execution[]
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([accountId, status])
+  @@map("import_batches")
+}
+
+/// A saved CSV column mapping, so the same broker export maps itself next time.
+model ImportMapping {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  broker         String?
+  /// `{ "Symbol": "symbol", "Filled Qty": "quantity", ... }`
+  columnMap      Json
+  /// How to parse the file's timestamps, e.g. "MM/dd/yyyy HH:mm:ss".
+  dateFormat     String?
+  /// The timezone the file's timestamps are expressed in.
+  timezone       String  @default("UTC")
+  delimiter      String  @default(",")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  batches      ImportBatch[]
+
+  @@unique([organizationId, name])
+  @@map("import_mappings")
+}
+
+// ---------------------------------------------------------------------------
+// Dashboards, saved filters and reports
+// ---------------------------------------------------------------------------
+
+model Dashboard {
+  id             String  @id @default(cuid())
+  organizationId String
+  userId         String
+  name           String
+  isDefault      Boolean @default(false)
+  /// Grid placement for the widgets, kept separate from widget config so a
+  /// layout change never touches a widget's query.
+  layout         Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  widgets      DashboardWidget[]
+
+  @@index([organizationId, userId])
+  @@map("dashboards")
+}
+
+enum WidgetType {
+  NET_PNL
+  EQUITY_CURVE
+  WIN_RATE
+  PROFIT_FACTOR
+  CALENDAR
+  DRAWDOWN
+  STREAKS
+  RECENT_TRADES
+  ACCOUNT_BALANCE
+  PROGRESS_HEATMAP
+  AVERAGE_R
+  EXPECTANCY
+  TAG_BREAKDOWN
+  PLAYBOOK_PERFORMANCE
+}
+
+model DashboardWidget {
+  id          String     @id @default(cuid())
+  dashboardId String
+  type        WidgetType
+  position    Int        @default(0)
+  /// Widget-specific options: account filter, date range, unit mode.
+  config      Json?
+
+  dashboard Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
+  @@index([dashboardId, position])
+  @@map("dashboard_widgets")
+}
+
+model SavedFilter {
+  id             String  @id @default(cuid())
+  organizationId String
+  userId         String
+  name           String
+  /// Which list this filter applies to: "trades", "notes", "executions".
+  resource       String
+  criteria       Json
+  isShared       Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId, resource, name])
+  @@map("saved_filters")
+}
+
+model ReportDefinition {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  /// "profitability", "risk", "symbols", "time-of-day", "tags", "behaviour"…
+  template       String
+  config         Json
+  isBuiltIn      Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@map("report_definitions")
+}
+
+// ---------------------------------------------------------------------------
+// Module boundaries: broker sync, mentorship, AI assistant, audit
+//
+// These tables are the seams the later stages plug into. They are modelled now
+// because retrofitting tenancy and audit trails onto live data is far more
+// expensive than carrying a few unused tables.
+// ---------------------------------------------------------------------------
+
+enum ConnectionStatus {
+  DISCONNECTED
+  PENDING
+  CONNECTED
+  ERROR
+  REVOKED
+}
+
+model BrokerConnection {
+  id             String           @id @default(cuid())
+  organizationId String
+  accountId      String?
+  provider       String
+  status         ConnectionStatus @default(DISCONNECTED)
+
+  /// Credentials sealed with BROKER_CREDENTIALS_ENCRYPTION_KEY. Plaintext
+  /// secrets never reach this column, and it is excluded from every API shape.
+  encryptedCredentials String?
+  /// Provider-side pagination position, so a resumed sync does not re-read.
+  syncCursor           String?
+  lastSyncedAt         DateTime?
+  lastError            String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  account      Account?     @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  syncRuns     SyncRun[]
+
+  @@index([organizationId, provider])
+  @@map("broker_connections")
+}
+
+model SyncRun {
+  id           String       @id @default(cuid())
+  connectionId String
+  status       ImportStatus @default(PENDING)
+  startedAt    DateTime     @default(now())
+  finishedAt   DateTime?
+  /// Counts of fetched, created, skipped and reconciled records.
+  stats        Json?
+  error        String?
+  /// Incremented by the queue on each retry.
+  attempt      Int          @default(1)
+
+  connection BrokerConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([connectionId, startedAt(sort: Desc)])
+  @@map("sync_runs")
+}
+
+enum MentorLinkStatus {
+  INVITED
+  ACTIVE
+  DECLINED
+  REVOKED
+}
+
+/// A mentor's scoped, revocable view of a mentee's journal.
+model MentorLink {
+  id             String           @id @default(cuid())
+  organizationId String
+  mentorUserId   String
+  menteeUserId   String
+  /// Null means every account in the workspace.
+  accountId      String?
+  status         MentorLinkStatus @default(INVITED)
+  canComment     Boolean          @default(true)
+
+  invitedAt  DateTime  @default(now())
+  acceptedAt DateTime?
+  revokedAt  DateTime?
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  mentor       User            @relation("MentorUser", fields: [mentorUserId], references: [id], onDelete: Cascade)
+  mentee       User            @relation("MenteeUser", fields: [menteeUserId], references: [id], onDelete: Cascade)
+  account      Account?        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  comments     MentorComment[]
+
+  @@unique([mentorUserId, menteeUserId, accountId])
+  @@index([organizationId, status])
+  @@map("mentor_links")
+}
+
+model MentorComment {
+  id           String  @id @default(cuid())
+  mentorLinkId String
+  authorId     String
+  tradeId      String?
+  body         String
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  mentorLink MentorLink @relation(fields: [mentorLinkId], references: [id], onDelete: Cascade)
+  author     User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  trade      Trade?     @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+
+  @@index([mentorLinkId, createdAt])
+  @@index([tradeId])
+  @@map("mentor_comments")
+}
+
+model AssistantConversation {
+  id             String  @id @default(cuid())
+  organizationId String
+  userId         String
+  title          String  @default("New conversation")
+  /// What the assistant was allowed to read for this conversation, recorded so
+  /// a trader can audit exactly which of their data was in scope.
+  dataScope      Json?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages     AssistantMessage[]
+
+  @@index([organizationId, userId, updatedAt(sort: Desc)])
+  @@map("assistant_conversations")
+}
+
+enum AssistantRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+model AssistantMessage {
+  id             String        @id @default(cuid())
+  conversationId String
+  role           AssistantRole
+  content        String
+  /// Which records the answer was grounded in, for citation and audit.
+  citations      Json?
+  /// Thumbs up or down from the trader, used to tune prompts.
+  feedback       Int?
+
+  createdAt DateTime @default(now())
+
+  conversation AssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("assistant_messages")
+}
+
+/// An append-only record of consequential actions. Written for imports,
+/// rollbacks, permission changes, share links and broker connections.
+model AuditLog {
+  id             String  @id @default(cuid())
+  organizationId String
+  actorUserId    String?
+  action         String
+  resourceType   String
+  resourceId     String?
+  metadata       Json?
+  ipAddress      String?
+  userAgent      String?
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User?        @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([organizationId, resourceType, resourceId])
+  @@map("audit_logs")
+}

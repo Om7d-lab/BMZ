@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  verify:
+    name: Lint, typecheck, test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: bmz
+          POSTGRES_PASSWORD: bmz_dev_password
+          POSTGRES_DB: bmz_trade_lab_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bmz -d bmz_trade_lab_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgresql://bmz:bmz_dev_password@localhost:5432/bmz_trade_lab_test?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_SECRET: ci-access-secret-ci-access-secret-ci-access
+      JWT_REFRESH_SECRET: ci-refresh-secret-ci-refresh-secret-ci-refre
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      # The apps resolve @bmz/* through the packages' emitted output, so the
+      # packages have to exist before anything typechecks, tests or builds an
+      # app. The root scripts do this too; doing it here as well means a failure
+      # points at the package that broke rather than at the app that imports it.
+      - name: Build workspace packages
+        run: pnpm build:packages
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Apply migrations
+        run: pnpm --filter @bmz/api exec prisma migrate deploy
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
