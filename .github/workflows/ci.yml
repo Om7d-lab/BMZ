@@ -27,7 +27,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U bmz"
+          --health-cmd "pg_isready -U bmz -d bmz_trade_lab_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
@@ -63,6 +63,13 @@ jobs:
 
       - name: Generate Prisma client
         run: pnpm db:generate
+
+      # The apps resolve @bmz/* through the packages' emitted output, so the
+      # packages have to exist before anything typechecks, tests or builds an
+      # app. The root scripts do this too; doing it here as well means a failure
+      # points at the package that broke rather than at the app that imports it.
+      - name: Build workspace packages
+        run: pnpm build:packages
 
       - name: Check formatting
         run: pnpm format:check
