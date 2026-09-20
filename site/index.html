@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0c1118" />
+    <title>BMZ Trade Lab</title>
+    <meta
+      name="description"
+      content="A trading journal for traders who want evidence instead of memory. Log every fill, review every session, and find out what actually makes you money."
+    />
+    <meta property="og:title" content="BMZ Trade Lab" />
+    <meta
+      property="og:description"
+      content="Trade with evidence, not memory. Record every fill, work out what each decision actually cost you, and find the patterns you would never spot on a broker statement."
+    />
+    <meta property="og:type" content="website" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2314b88a'/%3E%3Ctext x='16' y='23' font-family='Inter,sans-serif' font-size='20' font-weight='700' fill='%230c1118' text-anchor='middle'%3EB%3C/text%3E%3C/svg%3E"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /*
+       * BMZ Trade Lab — static marketing landing page.
+       *
+       * The palette mirrors the app's design tokens (apps/web/src/app/globals.css):
+       * a cool graphite-navy backdrop rather than neutral grey, with emerald as
+       * the single strongly-saturated brand colour. Colour here means brand the
+       * same way it means money inside the product.
+       */
+      :root {
+        --canvas: oklch(17.5% 0.017 258);
+        --surface: oklch(21.5% 0.018 258);
+        --surface-raised: oklch(25.5% 0.019 258);
+        --line: oklch(31% 0.018 258);
+        --ink: oklch(96% 0.006 258);
+        --ink-muted: oklch(74% 0.014 258);
+        --ink-subtle: oklch(58% 0.016 258);
+        --brand: oklch(72% 0.16 165);
+        --brand-strong: oklch(64% 0.17 165);
+        --brand-soft: oklch(30% 0.06 165);
+        --radius-card: 0.875rem;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html {
+        color-scheme: dark;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        background-color: var(--canvas);
+        color: var(--ink);
+        font-family:
+          'Inter',
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          'Helvetica Neue',
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.5;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      ::selection {
+        background-color: var(--brand-soft);
+        color: var(--ink);
+      }
+
+      :focus-visible {
+        outline: 2px solid var(--brand);
+        outline-offset: 2px;
+      }
+
+      .page {
+        position: relative;
+        isolation: isolate;
+        min-height: 100dvh;
+        overflow: hidden;
+      }
+
+      /* The faint emerald wash behind the hero. */
+      .aurora {
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        background-image:
+          radial-gradient(ellipse 80% 60% at 50% -20%, var(--brand-soft), transparent 70%),
+          radial-gradient(ellipse 60% 50% at 90% 10%, oklch(30% 0.05 195 / 0.6), transparent 70%);
+      }
+
+      .wrap {
+        margin-inline: auto;
+        max-width: 72rem;
+        padding-inline: 1.5rem;
+      }
+
+      /* Header */
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-block: 1.5rem;
+      }
+
+      .wordmark {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 1rem;
+      }
+
+      .wordmark .mark {
+        display: grid;
+        place-items: center;
+        width: 1.75rem;
+        height: 1.75rem;
+        border-radius: 0.5rem;
+        background-color: var(--brand);
+        color: var(--canvas);
+        font-weight: 700;
+      }
+
+      .wordmark .name {
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        color: var(--ink);
+      }
+
+      nav {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 0.5rem;
+        padding: 0.5rem 1rem;
+        font-size: 0.875rem;
+        transition:
+          background-color 0.15s ease,
+          color 0.15s ease;
+      }
+
+      .btn-ghost {
+        color: var(--ink-muted);
+      }
+      .btn-ghost:hover {
+        color: var(--ink);
+      }
+
+      .btn-primary {
+        background-color: var(--brand);
+        color: var(--canvas);
+        font-weight: 600;
+      }
+      .btn-primary:hover {
+        background-color: var(--brand-strong);
+      }
+
+      .btn-outline {
+        border: 1px solid var(--line);
+        background-color: var(--surface);
+        color: var(--ink);
+      }
+      .btn-outline:hover {
+        background-color: var(--surface-raised);
+      }
+
+      /* Hero */
+      .hero {
+        margin-inline: auto;
+        max-width: 48rem;
+        padding-inline: 1.5rem;
+        padding-block: 5rem 6rem;
+        text-align: center;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        margin-bottom: 1.25rem;
+        border: 1px solid oklch(72% 0.16 165 / 0.3);
+        border-radius: 999px;
+        background-color: var(--brand-soft);
+        padding: 0.25rem 0.75rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: var(--brand);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2.25rem, 6vw, 3.75rem);
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        line-height: 1.05;
+        text-wrap: balance;
+        color: var(--ink);
+      }
+
+      .subtitle {
+        margin: 1.5rem auto 0;
+        max-width: 36rem;
+        font-size: clamp(1rem, 2.4vw, 1.125rem);
+        color: var(--ink-muted);
+        text-wrap: pretty;
+      }
+
+      .cta-row {
+        margin-top: 2.25rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+      }
+
+      .cta-row .btn {
+        width: 100%;
+        padding: 0.75rem 1.5rem;
+      }
+
+      .fineprint {
+        margin-top: 1rem;
+        font-size: 0.75rem;
+        color: var(--ink-subtle);
+      }
+
+      /* Features */
+      .features {
+        margin-inline: auto;
+        max-width: 64rem;
+        padding-inline: 1.5rem;
+        padding-bottom: 6rem;
+        display: grid;
+        gap: 1rem;
+      }
+
+      .card {
+        background-color: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-card);
+        padding: 1.5rem;
+        text-align: start;
+      }
+
+      .card h2 {
+        margin: 0;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--ink);
+      }
+
+      .card p {
+        margin: 0.5rem 0 0;
+        font-size: 0.875rem;
+        line-height: 1.6;
+        color: var(--ink-muted);
+      }
+
+      /* Footer */
+      footer {
+        border-top: 1px solid var(--line);
+      }
+
+      .footer-inner {
+        margin-inline: auto;
+        max-width: 72rem;
+        padding-inline: 1.5rem;
+        padding-block: 2rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        font-size: 0.75rem;
+        color: var(--ink-subtle);
+      }
+
+      @media (min-width: 640px) {
+        .cta-row {
+          flex-direction: row;
+        }
+        .cta-row .btn {
+          width: auto;
+        }
+        .features {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .footer-inner {
+          flex-direction: row;
+        }
+        .hero {
+          padding-top: 7rem;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition-duration: 0.01ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="aurora" aria-hidden="true"></div>
+
+      <div class="wrap">
+        <header>
+          <span class="wordmark">
+            <span class="mark" aria-hidden="true">B</span>
+            <span class="name">BMZ Trade Lab</span>
+          </span>
+          <nav>
+            <a class="btn btn-ghost" href="https://github.com/Om7d-lab/BMZ">Follow the build</a>
+            <a class="btn btn-primary" href="https://github.com/Om7d-lab/BMZ">Star on GitHub</a>
+          </nav>
+        </header>
+      </div>
+
+      <section class="hero">
+        <p class="badge">Free while we build it with you</p>
+
+        <h1>Trade with evidence, not memory.</h1>
+
+        <p class="subtitle">
+          BMZ Trade Lab records every fill, works out what each decision actually cost you, and
+          shows you the patterns you would never spot by scrolling back through a broker statement.
+        </p>
+
+        <div class="cta-row">
+          <a class="btn btn-primary" href="https://github.com/Om7d-lab/BMZ">Explore the project</a>
+          <a class="btn btn-outline" href="https://github.com/Om7d-lab/BMZ">Read the roadmap</a>
+        </div>
+
+        <p class="fineprint">
+          Stocks, futures, forex, crypto and options. Currently in early development.
+        </p>
+      </section>
+
+      <section class="features">
+        <article class="card">
+          <h2>Every fill, not every guess</h2>
+          <p>
+            Enter trades by hand or import a broker CSV. P&amp;L, R-multiples and holding periods
+            are worked out from the executions, so the numbers are the broker's, not yours.
+          </p>
+        </article>
+        <article class="card">
+          <h2>The review you keep skipping</h2>
+          <p>
+            A day view, a notebook and playbook rules that get checked against the trade you
+            actually took. Lock the end-of-day review and the streak starts meaning something.
+          </p>
+        </article>
+        <article class="card">
+          <h2>Answers, not dashboards</h2>
+          <p>
+            Which setup pays. Which hour costs you. What the tag "chased the entry" has cost you
+            this quarter. Filter it any way you like.
+          </p>
+        </article>
+      </section>
+
+      <footer>
+        <div class="footer-inner">
+          <span class="wordmark">
+            <span class="mark" aria-hidden="true">B</span>
+            <span class="name">BMZ Trade Lab</span>
+          </span>
+          <p style="margin: 0">
+            &copy; <span id="year">2026</span> BMZ Trade Lab. Journalling software, not advice.
+          </p>
+        </div>
+      </footer>
+    </div>
+
+    <script>
+      document.getElementById('year').textContent = new Date().getFullYear();
+    </script>
+  </body>
+</html>
