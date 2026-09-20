@@ -1,0 +1,14 @@
+.git
+**/node_modules
+**/dist
+**/.next
+**/*.tsbuildinfo
+apps/api/src/generated
+coverage
+.docker-data
+site
+*.md
+!README.md
+.env
+.env.*
+!.env.example

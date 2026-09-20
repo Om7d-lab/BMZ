@@ -37,12 +37,54 @@ Two decisions make the deployment reliable:
      └───────────────────────────────────────────┘  server components fetch API_ORIGIN directly
 ```
 
-You can host the API anywhere that runs a Node server; Render is used below
-because this repo ships a ready blueprint (`render.yaml`).
+You can host the API anywhere that runs a Node server. Two ready paths ship in
+this repo: **Northflank** (everything on one platform — recommended) and
+**Vercel + Render**. Pick one.
 
 ---
 
-## Step 1 — Deploy the API and database (Render)
+## Option A — Northflank (one platform for all three)
+
+Northflank runs the database, the API and the web app as long-running services
+in a single project. The repo ships Dockerfiles for both apps
+(`apps/api/Dockerfile`, `apps/web/Dockerfile`), built from the repository root.
+
+1. **Create a project.** Add **Addon → PostgreSQL** and copy its connection
+   string.
+2. **API service** — Create service → build from this repository:
+   - Build type **Dockerfile**, build context `/`, path `apps/api/Dockerfile`.
+   - Keep it **private** (internal only): the web app reaches it over the
+     project network, the browser never does. Port `4000` (the host injects
+     `PORT` and the server binds to it).
+   - Environment: `NODE_ENV=production`, `DATABASE_URL` (the addon's string),
+     `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` (two different random strings,
+     ≥ 32 chars), `AUTH_COOKIE_SECURE=true`. Add `WEB_URL` and
+     `API_CORS_ORIGINS` once you have the web URL (step 4).
+   - The container runs `prisma migrate deploy` on start, so the schema is
+     created automatically.
+3. **Web service** — Create service → build from this repository:
+   - Build type **Dockerfile**, build context `/`, path `apps/web/Dockerfile`,
+     with **build argument** `API_ORIGIN` set to the API's internal URL
+     (e.g. `http://bmz-api:4000`). Next bakes the `/api/*` proxy target at build
+     time, which is why it is a build argument.
+   - Set `API_ORIGIN` as a **runtime** environment variable to the same value
+     (server components read it at run time).
+   - Expose it **publicly** on port `3000`. This public URL is what you share.
+4. Set the API service's `WEB_URL` and `API_CORS_ORIGINS` to the web's public
+   URL, then redeploy the API. Done — open the web URL and register.
+
+Generate a secret:
+`node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`
+
+> The onboarding survey — for "What would you like to deploy?" answer something
+> like _"a Next.js web app and a NestJS API with a PostgreSQL database (a pnpm
+> monorepo, Dockerfiles included)"_, and pick the region closest to your users.
+
+---
+
+## Option B — Vercel (web) + Render (API + database)
+
+### Step 1 — Deploy the API and database (Render)
 
 1. Push this repository to GitHub (already done for `main`).
 2. In Render: **New → Blueprint**, and select this repository. Render reads
@@ -65,7 +107,7 @@ because this repo ships a ready blueprint (`render.yaml`).
 > is slow. For always-on, use a paid instance or Railway/Fly.io — the app is the
 > same.
 
-## Step 2 — Deploy the web app (Vercel)
+### Step 2 — Deploy the web app (Vercel)
 
 1. In Vercel: **Add New → Project**, import this repository.
 2. Set **Root Directory** to `apps/web`. Vercel detects Next.js; the install and
@@ -77,7 +119,7 @@ because this repo ships a ready blueprint (`render.yaml`).
      (e.g. `https://bmz-api.onrender.com`).
 4. Deploy. Copy the resulting URL, e.g. `https://bmz.vercel.app`.
 
-## Step 3 — Point the API back at the web app
+### Step 3 — Point the API back at the web app
 
 On Render, set these on the `bmz-api` service (Environment tab) to the Vercel
 URL from Step 2, then let it redeploy:
@@ -85,7 +127,7 @@ URL from Step 2, then let it redeploy:
 - `WEB_URL` = `https://bmz.vercel.app`
 - `API_CORS_ORIGINS` = `https://bmz.vercel.app`
 
-## Step 4 — Create an account and verify
+### Step 4 — Create an account and verify
 
 1. Open the Vercel URL and go to **Start free / Register**. Registration creates
    your account and first workspace and signs you in.
