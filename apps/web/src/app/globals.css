@@ -1,0 +1,146 @@
+@import 'tailwindcss';
+
+/*
+ * BMZ Trade Lab design tokens.
+ *
+ * The palette is built on a cool graphite-navy rather than neutral grey: a
+ * trader looks at this for hours, and a slight blue cast reads as calmer under
+ * low light. Emerald and rose carry profit and loss; they are the only strongly
+ * saturated colours in the system, so a number in colour always means money.
+ */
+@theme {
+  /* Surfaces, from the page backdrop up to a raised popover. */
+  --color-canvas: oklch(17.5% 0.017 258);
+  --color-surface: oklch(21.5% 0.018 258);
+  --color-surface-raised: oklch(25.5% 0.019 258);
+  --color-surface-overlay: oklch(29% 0.02 258);
+
+  /* Hairlines. Borders do the separating here, not drop shadows. */
+  --color-line: oklch(31% 0.018 258);
+  --color-line-strong: oklch(38% 0.02 258);
+
+  /* Text, in descending emphasis. */
+  --color-ink: oklch(96% 0.006 258);
+  --color-ink-muted: oklch(74% 0.014 258);
+  --color-ink-subtle: oklch(58% 0.016 258);
+
+  /* Brand. Emerald leads, teal supports. */
+  --color-brand: oklch(72% 0.16 165);
+  --color-brand-strong: oklch(64% 0.17 165);
+  --color-brand-soft: oklch(30% 0.06 165);
+  --color-accent: oklch(74% 0.12 195);
+
+  /* P&L. Profit is emerald, loss is rose, flat is muted ink. */
+  --color-profit: oklch(76% 0.17 158);
+  --color-profit-soft: oklch(32% 0.07 158);
+  --color-loss: oklch(68% 0.19 18);
+  --color-loss-soft: oklch(31% 0.08 18);
+  --color-warning: oklch(80% 0.15 80);
+
+  /*
+   * Chart fills for the diverging profit/loss scale.
+   *
+   * Green and red are what a trader expects, but they are also the classic
+   * red-green colour-blindness trap: the text tokens above sit only 5.0 ΔE
+   * apart under deuteranopia. Separating the two poles by lightness as well as
+   * hue lifts that to 20.8 ΔE, comfortably past the 8 threshold, while still
+   * reading as green and red to everyone else. Every mark drawn in these
+   * colours also carries its signed number, so colour is never the only channel
+   * the value is available through.
+   */
+  --color-chart-profit: oklch(82% 0.15 162);
+  --color-chart-loss: oklch(60% 0.2 14);
+
+  --font-sans:
+    'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
+    sans-serif;
+  /* Numbers are tabular everywhere they line up in a column. */
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --radius-card: 0.875rem;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /*
+   * Right-to-left support is structural rather than bolted on: the layout uses
+   * logical properties throughout, so setting dir="rtl" on <html> mirrors the
+   * whole interface. Numbers and the P&L sign stay left-to-right, because a
+   * figure like -1,240.50 is read the same way in Persian as in English.
+   */
+  [dir='rtl'] .numeric {
+    direction: ltr;
+    unicode-bidi: embed;
+  }
+
+  .numeric {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    background-color: var(--color-brand-soft);
+    color: var(--color-ink);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+
+  /* Scrollbars, so a long trade list does not sprout a bright grey bar. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line-strong);
+    border-radius: 999px;
+    border: 2px solid var(--color-canvas);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-ink-subtle);
+  }
+}
+
+@layer components {
+  .card {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+  }
+
+  /* The faint emerald wash behind the marketing hero and the auth screens. */
+  .aurora {
+    background-image:
+      radial-gradient(ellipse 80% 60% at 50% -20%, var(--color-brand-soft), transparent 70%),
+      radial-gradient(ellipse 60% 50% at 90% 10%, oklch(30% 0.05 195 / 0.6), transparent 70%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
