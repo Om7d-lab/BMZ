@@ -11,6 +11,8 @@ export default tseslint.config(
       '**/coverage/**',
       '**/generated/**',
       'apps/api/prisma/migrations/**',
+      // Vendored third-party design skills (see .claude/skills/README.md).
+      '.claude/skills/**',
     ],
   },
   eslint.configs.recommended,
