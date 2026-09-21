@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import type { SessionResponse } from '@bmz/contracts';
 import { apiRequest, ApiRequestError } from '@/lib/api';
@@ -21,6 +21,24 @@ export function SignInPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  // The showcase video is decoration. Anyone who asks for less motion gets a
+  // still frame instead, and the preference is honoured if it changes live.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const apply = () => {
+      if (query.matches) video.pause();
+      else void video.play().catch(() => {});
+    };
+
+    apply();
+    query.addEventListener('change', apply);
+    return () => query.removeEventListener('change', apply);
+  }, []);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -57,7 +75,33 @@ export function SignInPage() {
     <main className="flex min-h-dvh">
       {/* Left: brand showcase (large screens only) */}
       <aside className="relative hidden flex-1 overflow-hidden border-e border-line bg-canvas lg:flex">
-        <div className="aurora pointer-events-none absolute inset-0" />
+        {/*
+         * Ambient showcase video. The source is small and soft, so it is scaled
+         * up, blurred a touch and dimmed: it reads as atmosphere behind the
+         * copy rather than as footage, and the scrims below keep the text at a
+         * comfortable contrast over every frame.
+         */}
+        <video
+          ref={videoRef}
+          src="/media/signin-bg.mp4"
+          muted
+          loop
+          playsInline
+          autoPlay
+          preload="metadata"
+          aria-hidden
+          tabIndex={-1}
+          className="pointer-events-none absolute inset-0 size-full scale-105 object-cover opacity-70 blur-[1px]"
+        />
+
+        {/*
+         * Scrims, weighted to the bottom: the footage stays visible across the
+         * top of the panel, then darkens into near-solid canvas behind the copy
+         * so the headline and list keep their contrast on every frame.
+         */}
+        <div className="pointer-events-none absolute inset-0 bg-canvas/20" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-canvas via-canvas/85 to-canvas/5" />
+        <div className="aurora pointer-events-none absolute inset-0 opacity-70" />
 
         <Link
           href="/"
