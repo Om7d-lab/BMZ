@@ -39,7 +39,10 @@ export default function proxy(request: NextRequest) {
 }
 
 export const config = {
+  // Static assets under public/ must be excluded, or a signed-out visitor gets
+  // redirected to /login instead of the file — which would, among other things,
+  // stop the sign-in screen's own background video from ever loading.
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|webp|ico)$).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|webp|avif|gif|ico|mp4|webm|woff|woff2)$).*)',
   ],
 };
