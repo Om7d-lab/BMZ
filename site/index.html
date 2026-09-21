@@ -131,14 +131,9 @@
       }
 
       .wordmark .mark {
-        display: grid;
-        place-items: center;
         width: 1.75rem;
         height: 1.75rem;
-        border-radius: 0.5rem;
-        background-color: var(--brand);
-        color: var(--canvas);
-        font-weight: 700;
+        flex-shrink: 0;
       }
 
       .wordmark .name {
@@ -333,7 +328,12 @@
       <div class="wrap">
         <header>
           <span class="wordmark">
-            <span class="mark" aria-hidden="true">B</span>
+            <svg class="mark" viewBox="0 0 40 40" aria-hidden="true">
+              <rect x="0.75" y="0.75" width="38.5" height="38.5" rx="11" fill="var(--surface)" stroke="var(--brand)" stroke-opacity="0.55" stroke-width="1.5" />
+              <text x="20" y="20.5" text-anchor="middle" dominant-baseline="central" font-family="'Inter', sans-serif" font-weight="800" font-size="15" letter-spacing="-1.2">
+                <tspan fill="var(--ink)">B</tspan><tspan fill="var(--brand)">M</tspan><tspan fill="var(--ink)">Z</tspan>
+              </text>
+            </svg>
             <span class="name">BMZ Trade Lab</span>
           </span>
           <nav>
@@ -390,7 +390,12 @@
       <footer>
         <div class="footer-inner">
           <span class="wordmark">
-            <span class="mark" aria-hidden="true">B</span>
+            <svg class="mark" viewBox="0 0 40 40" aria-hidden="true">
+              <rect x="0.75" y="0.75" width="38.5" height="38.5" rx="11" fill="var(--surface)" stroke="var(--brand)" stroke-opacity="0.55" stroke-width="1.5" />
+              <text x="20" y="20.5" text-anchor="middle" dominant-baseline="central" font-family="'Inter', sans-serif" font-weight="800" font-size="15" letter-spacing="-1.2">
+                <tspan fill="var(--ink)">B</tspan><tspan fill="var(--brand)">M</tspan><tspan fill="var(--ink)">Z</tspan>
+              </text>
+            </svg>
             <span class="name">BMZ Trade Lab</span>
           </span>
           <p style="margin: 0">
