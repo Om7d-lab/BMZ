@@ -187,6 +187,35 @@
 }
 
 @layer components {
+  /*
+   * A local dark scope.
+   *
+   * The sign-in showcase is a cinematic media panel: its scrims are built from
+   * the canvas token, so in the light theme they turned near-white and washed
+   * the footage out completely. Pinning the tokens it uses to their dark values
+   * keeps the panel a night sky in either theme — the video stays the subject,
+   * and every utility inside it (`text-ink`, `bg-brand-soft`, `border-line`,
+   * the mark's own `var(--color-surface)`) resolves correctly without a single
+   * per-element override.
+   *
+   * These are the dark palette's values; they intentionally mirror the @theme
+   * block above.
+   */
+  .dark-scope {
+    --color-canvas: oklch(17.5% 0.017 258);
+    --color-surface: oklch(21.5% 0.018 258);
+    --color-line: oklch(31% 0.018 258);
+    --color-line-strong: oklch(38% 0.02 258);
+    --color-ink: oklch(96% 0.006 258);
+    --color-ink-muted: oklch(74% 0.014 258);
+    --color-ink-subtle: oklch(58% 0.016 258);
+    --color-brand: oklch(72% 0.16 165);
+    --color-brand-soft: oklch(30% 0.06 165);
+    --color-aurora-accent: oklch(30% 0.05 195 / 0.6);
+
+    color-scheme: dark;
+  }
+
   .card {
     background-color: var(--color-surface);
     border: 1px solid var(--color-line);

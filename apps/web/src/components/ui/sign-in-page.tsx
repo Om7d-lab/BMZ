@@ -31,14 +31,40 @@ export function SignInPage() {
     if (!video) return;
 
     const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let dropGestureListeners = () => {};
+
     const apply = () => {
-      if (query.matches) video.pause();
-      else void video.play().catch(() => {});
+      if (query.matches) {
+        video.pause();
+        return;
+      }
+
+      void video.play().catch(() => {
+        // Muted autoplay is still refused in places — Safari in Low Power Mode,
+        // or a per-site autoplay block. Start on the first interaction instead
+        // rather than leaving a frozen frame behind the copy.
+        const start = () => {
+          dropGestureListeners();
+          void video.play().catch(() => {});
+        };
+
+        window.addEventListener('pointerdown', start, { once: true });
+        window.addEventListener('keydown', start, { once: true });
+
+        dropGestureListeners = () => {
+          window.removeEventListener('pointerdown', start);
+          window.removeEventListener('keydown', start);
+        };
+      });
     };
 
     apply();
     query.addEventListener('change', apply);
-    return () => query.removeEventListener('change', apply);
+
+    return () => {
+      query.removeEventListener('change', apply);
+      dropGestureListeners();
+    };
   }, []);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -75,7 +101,7 @@ export function SignInPage() {
   return (
     <main className="flex min-h-dvh">
       {/* Left: brand showcase (large screens only) */}
-      <aside className="relative hidden flex-1 overflow-hidden border-e border-line bg-canvas lg:flex">
+      <aside className="dark-scope relative hidden flex-1 overflow-hidden border-e border-line bg-canvas lg:flex">
         {/*
          * Ambient showcase video. The source is small and soft, so it is scaled
          * up, blurred a touch and dimmed: it reads as atmosphere behind the
