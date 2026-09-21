@@ -42,6 +42,15 @@ const environmentSchema = z.object({
   SMTP_PORT: z.coerce.number().int().default(1025),
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
+  // Implicit TLS (port 465). Providers on 587 use STARTTLS, which nodemailer
+  // negotiates on its own, so this stays false there.
+  //
+  // Parsed the same way as AUTH_COOKIE_SECURE rather than with
+  // z.coerce.boolean(), which reads the string "false" as true.
+  SMTP_SECURE: z
+    .string()
+    .default('false')
+    .transform((value) => value === 'true'),
   MAIL_FROM: z.string().default('BMZ Trade Lab <no-reply@bmztradelab.com>'),
 
   // Everything below stays off until its credentials are supplied. The flags

@@ -16,6 +16,7 @@ import type {
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { PasswordService } from './password.service.js';
 import { TokenService, type IssuedTokens } from './token.service.js';
+import { MailService } from '../mail/mail.service.js';
 import type { Prisma, User } from '../../generated/prisma/client.js';
 
 export interface DeviceContext {
@@ -52,6 +53,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly passwords: PasswordService,
     private readonly tokens: TokenService,
+    private readonly mail: MailService,
   ) {}
 
   async register(input: RegisterRequest, device: DeviceContext = {}): Promise<AuthResult> {
@@ -190,7 +192,7 @@ export class AuthService {
   async requestPasswordReset(email: string): Promise<{ token: string | null }> {
     const user = await this.prisma.user.findUnique({
       where: { email },
-      select: { id: true, deletedAt: true },
+      select: { id: true, email: true, deletedAt: true },
     });
     if (!user || user.deletedAt) return { token: null };
 
@@ -204,6 +206,11 @@ export class AuthService {
         expiresAt: new Date(Date.now() + 60 * 60 * 1000),
       },
     });
+
+    // Awaited so a queued send cannot outlive the request, but MailService
+    // swallows its own failures: the caller answers the same either way, which
+    // is what keeps this endpoint from confirming whether an address exists.
+    await this.mail.sendPasswordReset(user.email, token);
 
     return { token };
   }

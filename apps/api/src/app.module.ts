@@ -9,6 +9,7 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard.js';
 import { TenantGuard } from './common/guards/tenant.guard.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { MailModule } from './modules/mail/mail.module.js';
 import { OrganizationsModule } from './modules/organizations/organizations.module.js';
 import { AccountsModule } from './modules/accounts/accounts.module.js';
 import { TradesModule } from './modules/trades/trades.module.js';
@@ -30,6 +31,7 @@ import { HealthModule } from './modules/health/health.module.js';
     }),
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
     PrismaModule,
+    MailModule,
     AuthModule,
     OrganizationsModule,
     AccountsModule,
