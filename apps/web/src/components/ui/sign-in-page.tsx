@@ -223,9 +223,27 @@ export function SignInPage() {
               />
             </Field>
 
-            <Field label="Password">
+            {/*
+              Not a <Field>: the reset link belongs beside the label, and Field
+              wraps its children in a <label>, where a nested link would both
+              steal the label's click and read poorly to a screen reader.
+            */}
+            <div>
+              <div className="mb-1.5 flex items-baseline justify-between gap-3">
+                <label htmlFor="password" className="text-xs font-medium text-ink-muted">
+                  Password
+                </label>
+                <Link
+                  href="/forgot-password"
+                  className="text-xs font-medium text-brand hover:underline"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+
               <div className="relative">
                 <Input
+                  id="password"
                   name="password"
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
@@ -243,7 +261,7 @@ export function SignInPage() {
                   {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
               </div>
-            </Field>
+            </div>
 
             {error ? (
               <p
