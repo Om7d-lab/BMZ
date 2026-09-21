@@ -4,7 +4,7 @@ import type { Account, SessionResponse } from '@bmz/contracts';
 import { serverApi } from '@/lib/server-api';
 import { ApiRequestError } from '@/lib/api';
 import { Sidebar } from '@/components/layout/Sidebar';
-import { Wordmark } from '../page';
+import { Wordmark } from '@/components/ui/brand';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   let session: SessionResponse;
