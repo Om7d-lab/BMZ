@@ -133,7 +133,9 @@ export function SignInPage() {
         <Link
           href="/"
           aria-label="Back to home"
-          className="absolute left-6 top-6 z-10 grid size-10 place-items-center rounded-full border border-line bg-surface/60 text-ink-muted backdrop-blur-sm transition-colors hover:border-line-strong hover:text-ink"
+          // z-20: the copy column below is also z-10 and comes later in the
+          // DOM, so at z-10 it won the stacking tie and swallowed these clicks.
+          className="absolute left-6 top-6 z-20 grid size-10 place-items-center rounded-full border border-line bg-surface/60 text-ink-muted backdrop-blur-sm transition-colors hover:border-line-strong hover:text-ink"
         >
           <ArrowLeft className="size-5" />
         </Link>
@@ -187,7 +189,7 @@ export function SignInPage() {
       {/* Right: the form */}
       <div className="relative flex flex-1 items-center justify-center bg-surface/30 px-6 py-12">
         {/* Compact top bar for small screens, where the showcase is hidden. */}
-        <div className="absolute inset-x-0 top-0 flex items-center justify-between px-6 py-6 lg:hidden">
+        <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-6 py-6 lg:hidden">
           <Wordmark small />
           <div className="flex items-center gap-2">
             <ThemeToggle />

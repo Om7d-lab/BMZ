@@ -252,213 +252,44 @@
   }
 
   /*
-   * The theme toggle: a small illustrated sky.
+   * The theme toggle.
    *
-   * Drawn with its own palette rather than the app tokens — a night sky has to
-   * stay a night sky whichever theme is active — but it borrows the system's
-   * radius, focus ring and shadow language so it sits natively in a header.
+   * A compact icon button that sits in a header the way the other controls do:
+   * it borrows the system's radius, border, surface and focus ring rather than
+   * inventing its own. Only the glyph changes — a sun for light, a moon for
+   * dark — crossfading with a short rotate so the swap reads without drawing
+   * attention to itself.
    *
-   * Every piece of state comes from `:root[data-theme]`, never from React, so
-   * the server renders one markup and the inline theme script has everything in
-   * its final position before first paint: no flash, no hydration gap. The
-   * dark values are the unprefixed defaults, so the control still looks right
-   * with JavaScript disabled.
-   *
-   * Geometry: a 72×36 track, a 28px disc, 4px of padding — so each disc travels
-   * 72 − 28 − 8 = 36px. The knob and the ghost travel in opposite directions,
-   * which reads as the sun and moon trading places.
+   * The state comes from `:root[data-theme]`, never from React, so the server
+   * renders one markup and the inline theme script has the right glyph showing
+   * before first paint: no flash, no hydration gap. The dark glyph is the
+   * unprefixed default, which is also the no-JavaScript fallback.
    */
-  .theme-toggle {
-    position: relative;
-    display: inline-flex;
-    flex: none;
-    width: 4.5rem;
-    height: 2.25rem;
-    padding: 0;
-    border: 0;
-    border-radius: 999px;
-    cursor: pointer;
-    overflow: hidden;
-    isolation: isolate;
-    background: linear-gradient(165deg, #6d8fb4 0%, #4c6d92 48%, #3a5672 100%);
-    box-shadow:
-      inset 0 1px 2px rgb(255 255 255 / 0.3),
-      inset 0 -2px 6px rgb(12 22 38 / 0.45),
-      0 2px 6px rgb(8 15 27 / 0.35);
-    transition:
-      background 420ms ease,
-      box-shadow 420ms ease;
-  }
-
-  :root[data-theme='light'] .theme-toggle {
-    background: linear-gradient(165deg, #eaf5ff 0%, #cbe5fb 50%, #aed6f7 100%);
-    box-shadow:
-      inset 0 1px 2px rgb(255 255 255 / 0.9),
-      inset 0 -2px 6px rgb(90 140 190 / 0.3),
-      0 2px 6px rgb(90 130 175 / 0.25);
-  }
-
-  /* Concentric arcs, emanating from whichever disc is currently raised. */
-  .theme-toggle__rings {
+  .theme-toggle__icon {
     position: absolute;
-    inset: -30%;
-    background: repeating-radial-gradient(
-      circle at 75% 50%,
-      rgb(255 255 255 / 0.14) 0 8px,
-      rgb(255 255 255 / 0) 8px 18px
-    );
-    transform: translateX(0);
     transition:
-      transform 520ms cubic-bezier(0.34, 1.2, 0.5, 1),
-      opacity 380ms ease;
+      opacity 200ms ease,
+      transform 320ms cubic-bezier(0.34, 1.2, 0.5, 1);
   }
 
-  /* White arcs vanish on a bright sky, so daytime layers in soft blue instead. */
-  :root[data-theme='light'] .theme-toggle__rings {
-    background: repeating-radial-gradient(
-      circle at 75% 50%,
-      rgb(118 170 216 / 0.22) 0 8px,
-      rgb(118 170 216 / 0) 8px 18px
-    );
-    transform: translateX(-38%);
-  }
-
-  /* A bank of overlapping cloud blobs along the bottom edge. */
-  .theme-toggle__clouds {
-    position: absolute;
-    inset: 0;
-    background:
-      radial-gradient(circle at 26% 104%, #fff 0 22%, transparent 23%),
-      radial-gradient(circle at 45% 113%, #fff 0 27%, transparent 28%),
-      radial-gradient(circle at 63% 103%, #fff 0 20%, transparent 21%),
-      radial-gradient(circle at 82% 112%, #fff 0 24%, transparent 25%);
-    opacity: 0.58;
-    transform: translateY(0);
-    transition:
-      opacity 380ms ease,
-      transform 520ms cubic-bezier(0.34, 1.2, 0.5, 1);
-  }
-
-  :root[data-theme='light'] .theme-toggle__clouds {
-    opacity: 0.95;
-    transform: translateY(-8%);
-  }
-
-  /* The two discs. The knob is raised; the ghost is the dimmed other option. */
-  .theme-toggle__disc {
-    position: absolute;
-    top: 50%;
-    left: 0.25rem;
-    width: 1.75rem;
-    height: 1.75rem;
-    border-radius: 999px;
-    transform: translate(var(--tt-x, 0), -50%) scale(var(--tt-scale, 1));
-    transition:
-      transform 520ms cubic-bezier(0.34, 1.2, 0.5, 1),
-      opacity 380ms ease;
-  }
-
-  .theme-toggle__disc--knob {
-    --tt-x: 2.25rem;
-    z-index: 2;
-  }
-
-  .theme-toggle__disc--ghost {
-    --tt-x: 0rem;
-    --tt-scale: 0.84;
-    z-index: 1;
-    opacity: 0.9;
-  }
-
-  :root[data-theme='light'] .theme-toggle__disc--knob {
-    --tt-x: 0rem;
-  }
-
-  :root[data-theme='light'] .theme-toggle__disc--ghost {
-    --tt-x: 2.25rem;
-  }
-
-  .theme-toggle:hover .theme-toggle__disc--knob {
-    --tt-scale: 1.06;
-  }
-
-  .theme-toggle:active .theme-toggle__disc--knob {
-    --tt-scale: 0.94;
-  }
-
-  /* Sun and moon faces, crossfading inside whichever disc they sit in. */
-  .theme-toggle__face {
-    position: absolute;
-    inset: 0;
-    border-radius: 999px;
-    transition:
-      opacity 340ms ease,
-      transform 520ms cubic-bezier(0.34, 1.2, 0.5, 1);
-  }
-
-  .theme-toggle__face--sun {
-    background: radial-gradient(
-      circle at 34% 30%,
-      #fff3b0 0%,
-      #ffd74a 42%,
-      #f2bf1f 78%,
-      #e0a800 100%
-    );
-    box-shadow:
-      inset 0 2px 3px rgb(255 255 255 / 0.55),
-      inset 0 -3px 5px rgb(170 115 0 / 0.35);
-  }
-
-  .theme-toggle__face--moon {
-    background-image:
-      radial-gradient(circle at 66% 32%, rgb(186 205 224 / 0.75) 0 14%, transparent 15%),
-      radial-gradient(circle at 44% 66%, rgb(186 205 224 / 0.6) 0 11%, transparent 12%),
-      radial-gradient(circle at 73% 69%, rgb(186 205 224 / 0.5) 0 8%, transparent 9%),
-      radial-gradient(circle at 36% 30%, #fff 0%, #f1f7fd 45%, #d8e6f3 100%);
-    box-shadow:
-      inset 0 2px 3px rgb(255 255 255 / 0.8),
-      inset 0 -3px 5px rgb(120 150 180 / 0.35);
-  }
-
-  /*
-   * Dark: the moon is the raised knob on the right and the sun sits dimmed on
-   * the left. Light: they swap, and the sun picks up a warm glow.
-   */
-  .theme-toggle__disc--knob .theme-toggle__face--sun,
-  .theme-toggle__disc--ghost .theme-toggle__face--moon {
+  .theme-toggle__icon--sun {
     opacity: 0;
-    transform: scale(0.85) rotate(-25deg);
+    transform: rotate(-90deg) scale(0.5);
   }
 
-  .theme-toggle__disc--knob .theme-toggle__face--moon,
-  .theme-toggle__disc--ghost .theme-toggle__face--sun {
+  .theme-toggle__icon--moon {
     opacity: 1;
-    transform: scale(1) rotate(0deg);
+    transform: rotate(0deg) scale(1);
   }
 
-  :root[data-theme='light'] .theme-toggle__disc--knob .theme-toggle__face--moon,
-  :root[data-theme='light'] .theme-toggle__disc--ghost .theme-toggle__face--sun {
+  :root[data-theme='light'] .theme-toggle__icon--sun {
+    opacity: 1;
+    transform: rotate(0deg) scale(1);
+  }
+
+  :root[data-theme='light'] .theme-toggle__icon--moon {
     opacity: 0;
-    transform: scale(0.85) rotate(25deg);
-  }
-
-  :root[data-theme='light'] .theme-toggle__disc--knob .theme-toggle__face--sun,
-  :root[data-theme='light'] .theme-toggle__disc--ghost .theme-toggle__face--moon {
-    opacity: 1;
-    transform: scale(1) rotate(0deg);
-  }
-
-  /* The raised disc casts; the ghost does not. */
-  .theme-toggle__disc--knob {
-    box-shadow:
-      0 3px 6px rgb(10 20 35 / 0.45),
-      0 1px 2px rgb(10 20 35 / 0.3);
-  }
-
-  :root[data-theme='light'] .theme-toggle__disc--knob {
-    box-shadow:
-      0 3px 8px rgb(210 150 20 / 0.35),
-      0 1px 3px rgb(90 130 175 / 0.3);
+    transform: rotate(90deg) scale(0.5);
   }
 }
 
