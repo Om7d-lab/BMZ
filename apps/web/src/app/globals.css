@@ -133,6 +133,28 @@
       radial-gradient(ellipse 80% 60% at 50% -20%, var(--color-brand-soft), transparent 70%),
       radial-gradient(ellipse 60% 50% at 90% 10%, oklch(30% 0.05 195 / 0.6), transparent 70%);
   }
+
+  /*
+   * Entrance animation for the marketing page. Elements start slightly lowered
+   * and transparent, then rise into place; a per-element --rise-delay staggers
+   * them. The reduced-motion block below neutralises this to a plain fade so the
+   * content never moves for viewers who ask for less motion.
+   */
+  .rise {
+    animation: rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--rise-delay, 0ms);
+  }
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
