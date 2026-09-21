@@ -8,6 +8,7 @@ import type { SessionResponse } from '@bmz/contracts';
 import { apiRequest, ApiRequestError } from '@/lib/api';
 import { Button, Field, Input, Spinner } from '@/components/ui';
 import { Wordmark } from '@/components/ui/brand';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 
 /**
  * A full-screen split sign-in: a brand showcase on the left (large screens) and
@@ -112,7 +113,10 @@ export function SignInPage() {
         </Link>
 
         <div className="relative z-10 flex flex-1 flex-col justify-between p-10 xl:p-14">
-          <Wordmark />
+          <div className="flex items-center justify-between gap-4">
+            <Wordmark />
+            <ThemeToggle />
+          </div>
 
           <div className="max-w-md">
             <h2 className="text-balance text-3xl font-semibold tracking-tight text-ink xl:text-4xl">
@@ -159,13 +163,16 @@ export function SignInPage() {
         {/* Compact top bar for small screens, where the showcase is hidden. */}
         <div className="absolute inset-x-0 top-0 flex items-center justify-between px-6 py-6 lg:hidden">
           <Wordmark small />
-          <Link
-            href="/"
-            aria-label="Back to home"
-            className="grid size-9 place-items-center rounded-full border border-line bg-surface text-ink-muted transition-colors hover:border-line-strong hover:text-ink"
-          >
-            <ArrowLeft className="size-4" />
-          </Link>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <Link
+              href="/"
+              aria-label="Back to home"
+              className="grid size-9 place-items-center rounded-full border border-line bg-surface text-ink-muted transition-colors hover:border-line-strong hover:text-ink"
+            >
+              <ArrowLeft className="size-4" />
+            </Link>
+          </div>
         </div>
 
         <div className="w-full max-w-sm">

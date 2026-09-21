@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { RegisterForm } from '@/components/auth/RegisterForm';
 import { Wordmark } from '@/components/ui/brand';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 
 export const metadata: Metadata = { title: 'Create your account' };
 
@@ -10,9 +11,12 @@ export default function RegisterPage() {
     <main className="relative isolate grid min-h-dvh place-items-center overflow-hidden px-6 py-12">
       <div className="aurora pointer-events-none absolute inset-0 -z-10" />
       <div className="w-full max-w-sm">
-        <Link href="/" className="mb-8 flex justify-center">
-          <Wordmark />
-        </Link>
+        <div className="mb-8 flex items-center justify-between gap-4">
+          <Link href="/">
+            <Wordmark />
+          </Link>
+          <ThemeToggle />
+        </div>
 
         <div className="card p-6">
           <h1 className="text-lg font-semibold tracking-tight text-ink">Start your journal</h1>
