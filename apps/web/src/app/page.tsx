@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Wordmark } from '@/components/ui/brand';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 
 /**
  * The marketing landing page.
@@ -15,9 +16,10 @@ export default function LandingPage() {
     <main className="relative isolate min-h-dvh overflow-hidden">
       <div className="aurora pointer-events-none absolute inset-0 -z-10" />
 
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
-        <Wordmark />
-        <nav className="flex items-center gap-2">
+      <header className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-5 sm:px-6 sm:py-6">
+        <Wordmark compactOnMobile />
+        <nav className="flex items-center gap-2 sm:gap-3">
+          <ThemeToggle />
           <Link
             href="/login"
             className="hidden rounded-lg px-4 py-2 text-sm text-ink-muted transition-colors hover:text-ink sm:block"
@@ -26,7 +28,7 @@ export default function LandingPage() {
           </Link>
           <Link
             href="/register"
-            className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-canvas transition-colors hover:bg-brand-strong"
+            className="whitespace-nowrap rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-canvas transition-colors hover:bg-brand-strong"
           >
             Start free
           </Link>

@@ -1,14 +1,33 @@
+import clsx from 'clsx';
+
 /**
  * The BMZ brand lockup, shared across the marketing page, the auth screens and
  * the app shell. Plain presentational components (no hooks), so they render in
  * both server and client contexts.
  */
 
-export function Wordmark({ small = false }: { small?: boolean }) {
+export function Wordmark({
+  small = false,
+  /**
+   * Drops the name below `sm`, leaving just the mark. For headers that have to
+   * fit a theme toggle and a call to action on a narrow phone.
+   */
+  compactOnMobile = false,
+}: {
+  small?: boolean;
+  compactOnMobile?: boolean;
+}) {
   return (
-    <span className={`flex items-center gap-2.5 ${small ? 'text-sm' : 'text-base'}`}>
+    <span className={clsx('flex items-center gap-2.5', small ? 'text-sm' : 'text-base')}>
       <BmzMark className={small ? 'size-7' : 'size-8'} />
-      <span className="whitespace-nowrap font-semibold tracking-tight text-ink">BMZ Trade Lab</span>
+      <span
+        className={clsx(
+          'whitespace-nowrap font-semibold tracking-tight text-ink',
+          compactOnMobile && 'hidden sm:inline',
+        )}
+      >
+        BMZ Trade Lab
+      </span>
     </span>
   );
 }

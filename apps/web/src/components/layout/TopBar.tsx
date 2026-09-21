@@ -5,6 +5,7 @@ import { useState } from 'react';
 import type { Account, UserProfile } from '@bmz/contracts';
 import { apiRequest } from '@/lib/api';
 import { Button, Select } from '@/components/ui';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 
 export function TopBar({
   user,
@@ -66,6 +67,8 @@ export function TopBar({
           <p className="text-xs font-medium text-ink">{user.displayName}</p>
           <p className="text-[11px] text-ink-subtle">{user.timezone}</p>
         </div>
+
+        <ThemeToggle />
 
         <Button variant="ghost" size="sm" onClick={signOut} disabled={signingOut}>
           {signingOut ? 'Signing out' : 'Sign out'}
