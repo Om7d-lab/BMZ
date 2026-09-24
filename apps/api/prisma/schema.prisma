@@ -30,7 +30,9 @@ model User {
   id              String    @id @default(cuid())
   email           String    @unique
   emailVerifiedAt DateTime?
-  passwordHash    String
+  /// Null for an account created with Google until its owner sets a password,
+  /// which they do through the ordinary reset flow.
+  passwordHash    String?
   displayName     String
   avatarUrl       String?
 
@@ -47,7 +49,7 @@ model User {
 
   memberships       Membership[]
   sessions          Session[]
-  ownedOrgs         Organization[]       @relation("OrganizationOwner")
+  ownedOrgs         Organization[]          @relation("OrganizationOwner")
   verificationCodes VerificationToken[]
   notes             Note[]
   attachments       Attachment[]
@@ -55,11 +57,12 @@ model User {
   dashboards        Dashboard[]
   savedFilters      SavedFilter[]
   progressChecks    ProgressCheck[]
-  sentInvites       OrganizationInvite[] @relation("InviteSender")
-  mentorLinks       MentorLink[]         @relation("MentorUser")
-  menteeLinks       MentorLink[]         @relation("MenteeUser")
+  sentInvites       OrganizationInvite[]    @relation("InviteSender")
+  mentorLinks       MentorLink[]            @relation("MentorUser")
+  menteeLinks       MentorLink[]            @relation("MenteeUser")
   mentorComments    MentorComment[]
   conversations     AssistantConversation[]
+  identities        UserIdentity[]
 
   @@index([deletedAt])
   @@map("users")
@@ -67,6 +70,32 @@ model User {
 
 /// A refresh-token family. Rotating a refresh token revokes the previous row
 /// and issues a successor, so a replayed token is detectable.
+enum IdentityProvider {
+  GOOGLE
+}
+
+/// A way to sign in other than the password: currently Google.
+///
+/// Keyed on the provider's stable subject id, never the email — an address can
+/// change hands or be edited at the provider, a `sub` cannot.
+model UserIdentity {
+  id                String           @id @default(cuid())
+  userId            String
+  provider          IdentityProvider
+  providerAccountId String
+  /// The provider's address when linked, kept for display and audit only.
+  email             String
+  createdAt         DateTime         @default(now())
+  lastUsedAt        DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  /// One Google identity per user, so a second can't be attached silently.
+  @@unique([userId, provider])
+  @@map("user_identities")
+}
+
 model Session {
   id        String @id @default(cuid())
   userId    String
@@ -94,14 +123,14 @@ enum VerificationTokenType {
 }
 
 model VerificationToken {
-  id        String                @id @default(cuid())
-  userId    String
-  type      VerificationTokenType
-  tokenHash String                @unique
-  expiresAt DateTime
+  id         String                @id @default(cuid())
+  userId     String
+  type       VerificationTokenType
+  tokenHash  String                @unique
+  expiresAt  DateTime
   /// Single-use: set the moment the token is redeemed.
   consumedAt DateTime?
-  createdAt  DateTime  @default(now())
+  createdAt  DateTime              @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -113,13 +142,13 @@ model VerificationToken {
 /// A workspace. A solo trader gets one automatically at sign-up; teams, prop
 /// desks and mentors share one.
 model Organization {
-  id      String  @id @default(cuid())
+  id      String @id @default(cuid())
   name    String
-  slug    String  @unique
+  slug    String @unique
   ownerId String
   /// Free at launch. Plan gating is expressed through Entitlement rows so the
   /// billing provider can change without touching authorisation code.
-  plan    String  @default("free")
+  plan    String @default("free")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -223,12 +252,12 @@ model Entitlement {
 /// Billing is abstracted behind this record so Stripe can be attached later
 /// without a schema change. Nobody is charged while `provider` is "none".
 model BillingCustomer {
-  id             String  @id @default(cuid())
-  organizationId String  @unique
-  provider       String  @default("none")
+  id             String    @id @default(cuid())
+  organizationId String    @unique
+  provider       String    @default("none")
   externalId     String?
-  status         String  @default("inactive")
-  currentPlan    String  @default("free")
+  status         String    @default("inactive")
+  currentPlan    String    @default("free")
   trialEndsAt    DateTime?
   metadata       Json?
 
@@ -358,10 +387,10 @@ model Trade {
   /// The calendar day this trade belongs to, in the account timezone.
   tradingDay DateTime? @db.Date
 
-  multiplier      Decimal  @default(1) @db.Decimal(20, 8)
-  peakQuantity    Decimal  @default(0) @db.Decimal(28, 10)
-  openQuantity    Decimal  @default(0) @db.Decimal(28, 10)
-  closedQuantity  Decimal  @default(0) @db.Decimal(28, 10)
+  multiplier        Decimal  @default(1) @db.Decimal(20, 8)
+  peakQuantity      Decimal  @default(0) @db.Decimal(28, 10)
+  openQuantity      Decimal  @default(0) @db.Decimal(28, 10)
+  closedQuantity    Decimal  @default(0) @db.Decimal(28, 10)
   averageEntryPrice Decimal? @db.Decimal(28, 10)
   averageExitPrice  Decimal? @db.Decimal(28, 10)
 
@@ -540,17 +569,17 @@ model TradingDay {
   date           DateTime @db.Date
 
   /// Written before the session.
-  plan          String?
+  plan       String?
   /// Written after the session.
-  review        String?
+  review     String?
   /// Self-reported, 1-5.
-  moodBefore    Int?
-  moodAfter     Int?
+  moodBefore Int?
+  moodAfter  Int?
   /// Cached from the day's trades so the calendar renders in one query.
-  netPnl        Decimal  @default(0) @db.Decimal(20, 6)
-  tradeCount    Int      @default(0)
-  winCount      Int      @default(0)
-  lossCount     Int      @default(0)
+  netPnl     Decimal @default(0) @db.Decimal(20, 6)
+  tradeCount Int     @default(0)
+  winCount   Int     @default(0)
+  lossCount  Int     @default(0)
 
   /// Once the end-of-day review is locked, the plan and review become
   /// read-only. Locking is what makes the progress streak mean anything.
@@ -600,9 +629,9 @@ model Note {
 
   /// Rich text as a portable document tree. Markdown is kept alongside it so
   /// search, exports and the AI assistant have a plain-text view to read.
-  content         Json?
-  contentPlain    String?
-  isPinned        Boolean @default(false)
+  content      Json?
+  contentPlain String?
+  isPinned     Boolean @default(false)
 
   /// Autosave writes here on a debounce; the trader never presses save.
   autosavedAt DateTime?
@@ -708,9 +737,9 @@ model PlaybookRuleGroup {
 }
 
 model PlaybookRule {
-  id       String  @id @default(cuid())
-  groupId  String
-  text     String
+  id         String  @id @default(cuid())
+  groupId    String
+  text       String
   /// A required rule counts against adherence; an optional one is guidance.
   isRequired Boolean @default(true)
   position   Int     @default(0)
@@ -818,14 +847,14 @@ model ImportBatch {
   storageKey String?
   mappingId  String?
 
-  rowCount            Int @default(0)
-  createdTradeCount   Int @default(0)
-  createdExecutionCount Int @default(0)
-  duplicateCount      Int @default(0)
-  errorCount          Int @default(0)
+  rowCount              Int   @default(0)
+  createdTradeCount     Int   @default(0)
+  createdExecutionCount Int   @default(0)
+  duplicateCount        Int   @default(0)
+  errorCount            Int   @default(0)
   /// Per-row failures: `[{ row, column, message }]`. Kept so the trader can
   /// fix the source file rather than guess.
-  errors Json?
+  errors                Json?
 
   startedAt    DateTime?
   completedAt  DateTime?
@@ -1077,10 +1106,10 @@ model MentorComment {
 }
 
 model AssistantConversation {
-  id             String  @id @default(cuid())
+  id             String @id @default(cuid())
   organizationId String
   userId         String
-  title          String  @default("New conversation")
+  title          String @default("New conversation")
   /// What the assistant was allowed to read for this conversation, recorded so
   /// a trader can audit exactly which of their data was in scope.
   dataScope      Json?

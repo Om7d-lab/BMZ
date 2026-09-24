@@ -35,6 +35,9 @@ interface DeviceContext {
  * that replay is the signature of a stolen token being used alongside the real
  * one.
  */
+/** How long a just-rotated refresh token may still be presented by a racing request. */
+const ROTATION_GRACE_MS = 20_000;
+
 @Injectable()
 export class TokenService {
   private readonly logger = new Logger(TokenService.name);
@@ -93,7 +96,21 @@ export class TokenService {
       throw new UnauthorizedException('Session is no longer valid');
     }
 
-    if (session.revokedAt) {
+    // Two requests from the same browser can present the same refresh token at
+    // once — two tabs, or a navigation racing a refresh — and only one of them
+    // can win the rotation. A token rotated moments ago by exactly that race
+    // is allowed to rotate once more rather than being read as theft.
+    const justRotated =
+      session.revokedAt !== null &&
+      session.replacedBy !== null &&
+      Date.now() - session.revokedAt.getTime() < ROTATION_GRACE_MS &&
+      // …and only while what it rotated into is still live: a password change
+      // or sign-out-everywhere in the meantime must still end it.
+      (await this.prisma.session.count({
+        where: { id: session.replacedBy, revokedAt: null },
+      })) > 0;
+
+    if (session.revokedAt && !justRotated) {
       // A revoked token being presented means it was captured before rotation.
       // Kill every session this user has and make them sign in again.
       this.logger.warn(`Refresh token replay detected for user ${session.userId}`);
@@ -120,10 +137,14 @@ export class TokenService {
         select: { id: true },
       });
 
-      await tx.session.update({
-        where: { id: session.id },
-        data: { revokedAt: new Date(), replacedBy: created.id },
-      });
+      // Keep the first rotation's timestamp, so repeated presentations can't
+      // stretch the grace window.
+      if (!session.revokedAt) {
+        await tx.session.update({
+          where: { id: session.id },
+          data: { revokedAt: new Date(), replacedBy: created.id },
+        });
+      }
 
       return created;
     });

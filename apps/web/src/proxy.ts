@@ -14,28 +14,99 @@ const PUBLIC_PATHS = ['/', '/login', '/register', '/forgot-password', '/reset-pa
  * authorisation decision is made by the API, which verifies the token and the
  * workspace membership on every request.
  */
-export default function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-  const hasSession = request.cookies.has(ACCESS_COOKIE) || request.cookies.has(REFRESH_COOKIE);
+const API_ORIGIN = process.env.API_ORIGIN ?? 'http://localhost:4000';
 
+export default async function proxy(request: NextRequest) {
+  const { pathname, searchParams } = request.nextUrl;
   const isPublic = PUBLIC_PATHS.includes(pathname);
+
+  // The access token lives fifteen minutes and the browser drops its cookie
+  // when it expires; the refresh token lives for weeks. Renewing here, before
+  // anything renders, is what keeps someone signed in across that boundary —
+  // without it the app would bounce between /login and /dashboard forever.
+  const refreshed =
+    !request.cookies.has(ACCESS_COOKIE) &&
+    request.cookies.has(REFRESH_COOKIE) &&
+    !isPrefetch(request)
+      ? await refreshSession(request)
+      : null;
+
+  const hasSession = refreshed
+    ? refreshed.ok
+    : request.cookies.has(ACCESS_COOKIE) || request.cookies.has(REFRESH_COOKIE);
+
+  let response: NextResponse;
 
   if (!hasSession && !isPublic) {
     const target = request.nextUrl.clone();
     target.pathname = '/login';
+    target.search = '';
     // Come back to where they were headed once they have signed in.
     target.searchParams.set('next', pathname);
-    return NextResponse.redirect(target);
-  }
-
-  if (hasSession && (pathname === '/login' || pathname === '/register')) {
+    response = NextResponse.redirect(target);
+  } else if (
+    hasSession &&
+    (pathname === '/login' || pathname === '/register') &&
+    // The app sends people here with this flag when their cookies turned out
+    // to be dead; bouncing them back would loop.
+    searchParams.get('session') !== 'expired'
+  ) {
     const target = request.nextUrl.clone();
     target.pathname = '/dashboard';
     target.search = '';
-    return NextResponse.redirect(target);
+    response = NextResponse.redirect(target);
+  } else if (refreshed?.ok) {
+    // Hand the renewed cookies to this same render too, not just the browser,
+    // so the server components below see a valid session straight away.
+    const headers = new Headers(request.headers);
+    headers.set('cookie', refreshed.cookieHeader);
+    response = NextResponse.next({ request: { headers } });
+  } else {
+    response = NextResponse.next();
   }
 
-  return NextResponse.next();
+  // Renewed cookies on success; the API's clearing cookies on failure.
+  for (const cookie of refreshed?.setCookies ?? []) response.headers.append('set-cookie', cookie);
+  return response;
+}
+
+function isPrefetch(request: NextRequest): boolean {
+  return (
+    request.headers.has('next-router-prefetch') ||
+    request.headers.get('purpose') === 'prefetch' ||
+    request.headers.get('sec-purpose')?.includes('prefetch') === true
+  );
+}
+
+async function refreshSession(
+  request: NextRequest,
+): Promise<{ ok: boolean; setCookies: string[]; cookieHeader: string }> {
+  try {
+    const response = await fetch(`${API_ORIGIN}/api/v1/auth/refresh`, {
+      method: 'POST',
+      headers: {
+        cookie: `${REFRESH_COOKIE}=${request.cookies.get(REFRESH_COOKIE)?.value ?? ''}`,
+        'user-agent': request.headers.get('user-agent') ?? '',
+      },
+      cache: 'no-store',
+    });
+    const setCookies = response.headers.getSetCookie();
+
+    // The request's cookies with the renewed ones swapped in.
+    const jar = new Map(request.cookies.getAll().map((cookie) => [cookie.name, cookie.value]));
+    for (const line of setCookies) {
+      const [pair = ''] = line.split(';');
+      const index = pair.indexOf('=');
+      if (index > 0) jar.set(pair.slice(0, index).trim(), pair.slice(index + 1).trim());
+    }
+    const cookieHeader = [...jar].map(([name, value]) => `${name}=${value}`).join('; ');
+
+    return { ok: response.ok, setCookies, cookieHeader };
+  } catch {
+    // The API is unreachable. Leave the cookies alone — the session may be
+    // fine — and let the page's own request surface the outage.
+    return { ok: false, setCookies: [], cookieHeader: '' };
+  }
 }
 
 export const config = {
