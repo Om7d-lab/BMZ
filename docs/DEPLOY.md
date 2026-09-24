@@ -162,6 +162,9 @@ Health checks, if you want to confirm the backend directly:
 | `API_CORS_ORIGINS`        | yes      | Comma-separated allowed origins; normally just `WEB_URL`. |
 | `PORT`                    | auto     | Injected by the host; the server binds to it.             |
 | `AUTH_COOKIE_DOMAIN`      | no       | Leave unset so the cookie is scoped to the web origin.    |
+| `GOOGLE_CLIENT_ID`        | no       | Enables Google sign-in. See "Google sign-in" below.       |
+| `GOOGLE_CLIENT_SECRET`    | no       | Server-side only. Never set it on the web app.            |
+| `GOOGLE_REDIRECT_URI`     | no       | Defaults to `${WEB_URL}/api/v1/auth/google/callback`.     |
 | S3 / SMTP / feature flags | no       | Optional; off by default. See `.env.example`.             |
 
 Generate a secret locally if you set them by hand:
@@ -169,6 +172,74 @@ Generate a secret locally if you set them by hand:
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 ```
+
+---
+
+## Google sign-in
+
+Google sign-in is optional: without credentials the app runs normally and the
+"Continue with Google" button explains that it is unavailable.
+
+It uses OpenID Connect's authorization-code flow with PKCE, state and nonce.
+The callback lands on the **web** origin — the browser reaches the API through
+the web app's `/api` rewrite, which keeps the session cookies first-party — so
+the redirect URI is on the web domain, not the API's.
+
+### 1. Create the OAuth client
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → pick or create a
+   project.
+2. **APIs & Services → OAuth consent screen**: user type _External_, app name,
+   support email, and the scopes `openid`, `email` and `profile` (all
+   non-sensitive, so no verification review). Add test users while the app is
+   in _Testing_, or publish it to let anyone sign in.
+3. **APIs & Services → Credentials → Create credentials → OAuth client ID**,
+   application type **Web application**, with:
+
+   | Field                         | Local development                                   | Production                                              |
+   | ----------------------------- | --------------------------------------------------- | ------------------------------------------------------- |
+   | Authorized JavaScript origins | `http://localhost:3000`                             | `https://<your-web-domain>`                             |
+   | Authorized redirect URIs      | `http://localhost:3000/api/v1/auth/google/callback` | `https://<your-web-domain>/api/v1/auth/google/callback` |
+
+   Both can live on the same client, or use one client per environment.
+
+4. Copy the client ID and secret.
+
+### 2. Configure the API
+
+Set on the **API** service (never on the web app):
+
+```bash
+GOOGLE_CLIENT_ID=<client id>.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=<client secret>
+# Only if the callback is not ${WEB_URL}/api/v1/auth/google/callback:
+# GOOGLE_REDIRECT_URI=https://<your-web-domain>/api/v1/auth/google/callback
+```
+
+`WEB_URL` must be the exact public web origin, since the default redirect URI
+and every post-sign-in redirect are built from it. Redeploy the API.
+
+### How accounts are matched
+
+- A Google account is identified by its stable `sub`, stored in
+  `user_identities`, so a returning user is found even if their Gmail address
+  changes.
+- A new, Google-verified address gets a new account (no password; it can set
+  one any time through "Forgot password").
+- If the address already belongs to a **password** account, nothing is merged
+  automatically. The user is sent to the sign-in page and asked for their
+  password once; the Google identity is attached only after that succeeds, and
+  only if the address matches. This blocks pre-registration account takeover.
+- Google accounts whose email Google has not verified are refused.
+
+### Troubleshooting
+
+| Symptom on Google's screen / our sign-in page      | Cause                                                                                                                                      |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `redirect_uri_mismatch`                            | The URI in Console doesn't match `${WEB_URL}/api/v1/auth/google/callback` character for character (scheme, host, port, no trailing slash). |
+| "Google sign-in isn't available right now"         | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` not set on the API.                                                                            |
+| "…took too long or was started in another browser" | The 10-minute sign-in window expired, or the browser blocks cookies for this site, which drops the short-lived `bmz_oauth_tx` cookie.      |
+| `access_blocked` / "app not verified"              | The consent screen is in _Testing_ and the Google account isn't a listed test user.                                                        |
 
 ---
 

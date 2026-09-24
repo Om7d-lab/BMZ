@@ -10,9 +10,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   try {
     session = await serverApi<SessionResponse>('/auth/session');
   } catch (error) {
-    // The middleware only checks that a cookie exists. This is where an expired
-    // or revoked session actually gets caught.
-    if (error instanceof ApiRequestError && error.isUnauthorized) redirect('/login');
+    // The proxy only checks that a cookie exists. This is where a revoked or
+    // otherwise dead session actually gets caught. The flag stops the proxy
+    // from bouncing a browser that still holds those cookies straight back.
+    if (error instanceof ApiRequestError && error.isUnauthorized) {
+      redirect('/login?session=expired');
+    }
     throw error;
   }
 

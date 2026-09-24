@@ -9,6 +9,11 @@ import { apiRequest, ApiRequestError } from '@/lib/api';
 import { Button, Field, Input, Spinner } from '@/components/ui';
 import { Wordmark } from '@/components/ui/brand';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import {
+  AuthDivider,
+  GoogleSignInButton,
+  googleErrorMessage,
+} from '@/components/auth/GoogleSignInButton';
 
 /**
  * A full-screen split sign-in: a brand showcase on the left (large screens) and
@@ -23,6 +28,15 @@ export function SignInPage() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Set by the Google callback, or by the app when a session has died.
+  const next = searchParams.get('next');
+  const googleError =
+    googleErrorMessage(searchParams.get('error')) ??
+    (searchParams.get('session') === 'expired'
+      ? 'Your session has expired. Please sign in again.'
+      : null);
+  const linkingGoogle = searchParams.get('link') === 'google';
 
   // The showcase video is decoration. Anyone who asks for less motion gets a
   // still frame instead, and the preference is honoured if it changes live.
@@ -84,9 +98,12 @@ export function SignInPage() {
       });
 
       // Return to wherever they were headed, but only for on-site paths — an
-      // absolute URL here would be an open redirect.
-      const next = searchParams.get('next');
-      const destination = next?.startsWith('/') && !next.startsWith('//') ? next : '/dashboard';
+      // absolute URL, or a `//` or `/\` one browsers read as another host,
+      // would be an open redirect.
+      const destination =
+        next?.startsWith('/') && !next.startsWith('//') && !next.includes('\\')
+          ? next
+          : '/dashboard';
 
       router.replace(destination);
       router.refresh();
@@ -212,7 +229,36 @@ export function SignInPage() {
             </Link>
           </p>
 
-          <form onSubmit={onSubmit} className="mt-8 space-y-4">
+          {linkingGoogle ? (
+            <div
+              role="status"
+              className="mt-6 rounded-lg border border-brand/30 bg-brand-soft px-3 py-2.5 text-xs leading-relaxed text-ink"
+            >
+              <p className="font-medium">This email already has an account.</p>
+              <p className="mt-0.5 text-ink-muted">
+                Sign in with your password once to connect Google. After that, either works.
+              </p>
+            </div>
+          ) : (
+            <>
+              {googleError ? (
+                <p
+                  role="alert"
+                  className="mt-6 rounded-lg border border-loss/30 bg-loss-soft px-3 py-2 text-xs text-loss"
+                >
+                  {googleError}
+                </p>
+              ) : null}
+
+              <GoogleSignInButton next={next} disabled={pending} className="mt-8" />
+
+              <div className="mt-6">
+                <AuthDivider>or sign in with email</AuthDivider>
+              </div>
+            </>
+          )}
+
+          <form onSubmit={onSubmit} className="mt-6 space-y-4">
             <Field label="Email">
               <Input
                 name="email"

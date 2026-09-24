@@ -38,6 +38,23 @@ const environmentSchema = z.object({
     .default('true')
     .transform((value) => value === 'true'),
 
+  // Google sign-in (OAuth 2.0 / OpenID Connect). Both optional: without them
+  // the app runs and the Google button explains that sign-in is unavailable.
+  // The secret is only ever read here on the server.
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  // Must match an "Authorized redirect URI" in Google Cloud Console exactly.
+  // Defaults to the web origin, because the browser reaches the API through
+  // the web app's /api rewrite — that keeps the session cookies first-party.
+  // A blank line in .env means unset, not an invalid URL.
+  GOOGLE_REDIRECT_URI: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.url().optional(),
+  ),
+  // Leave unset in production. Exists so tests can point discovery at a local
+  // OpenID provider instead of Google.
+  GOOGLE_OIDC_ISSUER: z.url().default('https://accounts.google.com'),
+
   SMTP_HOST: z.string().default('localhost'),
   SMTP_PORT: z.coerce.number().int().default(1025),
   SMTP_USER: z.string().optional(),

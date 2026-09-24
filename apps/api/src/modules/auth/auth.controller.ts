@@ -35,9 +35,14 @@ import {
   CurrentUser,
   type AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator.js';
-import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from '../../common/guards/jwt-auth.guard.js';
+import { REFRESH_TOKEN_COOKIE } from '../../common/guards/jwt-auth.guard.js';
 import { ApiZodBody, ApiZodResponse } from '../../common/swagger/zod-openapi.js';
-import type { IssuedTokens } from './token.service.js';
+import { clearAuthCookies, clearCookie, setAuthCookies } from './auth-cookies.js';
+import {
+  OAUTH_LINK_COOKIE,
+  OAUTH_LINK_COOKIE_PATH,
+  OAuthStateService,
+} from './google/oauth-state.js';
 
 @ApiTags('auth')
 // These routes are about the person, not one of their workspaces.
@@ -47,6 +52,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly config: ConfigService,
+    private readonly oauthState: OAuthStateService,
   ) {}
 
   @Public()
@@ -63,7 +69,7 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ): Promise<SessionResponse> {
     const result = await this.auth.register(body, deviceContext(request));
-    this.setAuthCookies(response, result.tokens);
+    setAuthCookies(this.config, response, result.tokens);
     return result.session;
   }
 
@@ -79,8 +85,17 @@ export class AuthController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<SessionResponse> {
-    const result = await this.auth.login(body, deviceContext(request));
-    this.setAuthCookies(response, result.tokens);
+    // Set when a Google sign-in found this address already had a password
+    // account: signing in with the password now is what proves ownership, so
+    // the Google identity is attached only after that succeeds.
+    const cookies = request.cookies as Record<string, string> | undefined;
+    const pendingGoogle = await this.oauthState.readPendingLink(cookies?.[OAUTH_LINK_COOKIE]);
+
+    const result = await this.auth.login(body, deviceContext(request), pendingGoogle);
+    setAuthCookies(this.config, response, result.tokens);
+    if (cookies?.[OAUTH_LINK_COOKIE]) {
+      clearCookie(this.config, response, OAUTH_LINK_COOKIE, OAUTH_LINK_COOKIE_PATH);
+    }
     return result.session;
   }
 
@@ -102,12 +117,12 @@ export class AuthController {
 
     try {
       const result = await this.auth.refresh(refreshToken, deviceContext(request));
-      this.setAuthCookies(response, result.tokens);
+      setAuthCookies(this.config, response, result.tokens);
       return result.session;
     } catch (error) {
       // A dead session should leave the browser with no cookies at all, so the
       // client stops retrying and shows the sign-in screen.
-      this.clearAuthCookies(response);
+      clearAuthCookies(this.config, response);
       throw error;
     }
   }
@@ -122,7 +137,7 @@ export class AuthController {
   ): Promise<void> {
     const cookies = request.cookies as Record<string, string> | undefined;
     await this.auth.logout(cookies?.[REFRESH_TOKEN_COOKIE], user.sessionId);
-    this.clearAuthCookies(response);
+    clearAuthCookies(this.config, response);
   }
 
   @Get('session')
@@ -155,7 +170,7 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ): Promise<void> {
     await this.auth.changePassword(user.id, body.currentPassword, body.newPassword);
-    this.clearAuthCookies(response);
+    clearAuthCookies(this.config, response);
   }
 
   @Public()
@@ -205,41 +220,12 @@ export class AuthController {
   ): Promise<void> {
     await this.auth.verifyEmail(body.token);
   }
-
-  private setAuthCookies(response: Response, tokens: IssuedTokens): void {
-    const secure = this.config.get<boolean>('AUTH_COOKIE_SECURE') ?? false;
-    const domain = this.config.get<string>('AUTH_COOKIE_DOMAIN');
-
-    const base = {
-      httpOnly: true,
-      secure,
-      // "lax" still sends the cookie on a top-level navigation back from an
-      // email link, which "strict" would drop.
-      sameSite: 'lax' as const,
-      path: '/',
-      ...(domain ? { domain } : {}),
-    };
-
-    response.cookie(ACCESS_TOKEN_COOKIE, tokens.accessToken, {
-      ...base,
-      expires: tokens.accessTokenExpiresAt,
-    });
-
-    response.cookie(REFRESH_TOKEN_COOKIE, tokens.refreshToken, {
-      ...base,
-      expires: tokens.refreshTokenExpiresAt,
-    });
-  }
-
-  private clearAuthCookies(response: Response): void {
-    const domain = this.config.get<string>('AUTH_COOKIE_DOMAIN');
-    const options = { path: '/', ...(domain ? { domain } : {}) };
-    response.clearCookie(ACCESS_TOKEN_COOKIE, options);
-    response.clearCookie(REFRESH_TOKEN_COOKIE, options);
-  }
 }
 
-function deviceContext(request: Request): { userAgent: string | null; ipAddress: string | null } {
+export function deviceContext(request: Request): {
+  userAgent: string | null;
+  ipAddress: string | null;
+} {
   return {
     userAgent: request.headers['user-agent'] ?? null,
     ipAddress: request.ip ?? null,

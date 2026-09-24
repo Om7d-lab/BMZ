@@ -17,7 +17,9 @@ import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { PasswordService } from './password.service.js';
 import { TokenService, type IssuedTokens } from './token.service.js';
 import { MailService } from '../mail/mail.service.js';
-import type { Prisma, User } from '../../generated/prisma/client.js';
+import { Prisma, type User } from '../../generated/prisma/client.js';
+import { decideGoogleSignIn, type GoogleClaims } from './google/google-policy.js';
+import type { PendingGoogleLink } from './google/oauth-state.js';
 
 export interface DeviceContext {
   userAgent?: string | null;
@@ -28,6 +30,12 @@ export interface AuthResult {
   tokens: IssuedTokens;
   session: SessionResponse;
 }
+
+export type GoogleSignInOutcome =
+  | { kind: 'signed-in'; result: AuthResult; created: boolean }
+  /** A password account owns this address; it must sign in with that first. */
+  | { kind: 'link-required' }
+  | { kind: 'rejected'; reason: 'unverified' | 'unavailable' };
 
 /** The entitlements every new workspace starts with on the free launch plan. */
 const FREE_PLAN_ENTITLEMENTS: ReadonlyArray<{ feature: string; limit: number | null }> = [
@@ -68,17 +76,38 @@ export class AuthService {
     const passwordHash = await this.passwords.hash(input.password);
     const workspaceName = input.organizationName?.trim() || `${input.displayName}'s workspace`;
 
-    const user = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.user.create({
-        data: {
-          email: input.email,
-          passwordHash,
-          displayName: input.displayName,
-          locale: input.locale,
-          timezone: input.timezone,
-          preferredCurrency: input.preferredCurrency,
-        },
-      });
+    const user = await this.createUserWithWorkspace(
+      {
+        email: input.email,
+        passwordHash,
+        displayName: input.displayName,
+        locale: input.locale,
+        timezone: input.timezone,
+        preferredCurrency: input.preferredCurrency,
+      },
+      workspaceName,
+    );
+
+    // Email verification is issued but not enforced: blocking a first session
+    // behind an inbox round-trip loses people who just wanted to try it.
+    await this.issueEmailVerification(user.id);
+
+    const tokens = await this.tokens.issue(user, device);
+    return { tokens, session: await this.buildSession(user.id, tokens.accessTokenExpiresAt) };
+  }
+
+  /**
+   * Creates a user and the workspace every account starts with — its first
+   * trading account, progress rules and tags — in one transaction, so a
+   * half-provisioned account can never exist. Shared by password sign-up and
+   * Google sign-up so the two can't drift apart.
+   */
+  private createUserWithWorkspace(
+    data: Prisma.UserCreateInput,
+    workspaceName: string,
+  ): Promise<User> {
+    return this.prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({ data });
 
       const organization = await tx.organization.create({
         data: {
@@ -99,8 +128,8 @@ export class AuthService {
           organizationId: organization.id,
           name: 'Main account',
           type: 'LIVE',
-          currency: input.preferredCurrency,
-          timezone: input.timezone,
+          currency: created.preferredCurrency,
+          timezone: created.timezone,
         },
       });
 
@@ -109,21 +138,19 @@ export class AuthService {
 
       return created;
     });
-
-    // Email verification is issued but not enforced: blocking a first session
-    // behind an inbox round-trip loses people who just wanted to try it.
-    await this.issueEmailVerification(user.id);
-
-    const tokens = await this.tokens.issue(user, device);
-    return { tokens, session: await this.buildSession(user.id, tokens.accessTokenExpiresAt) };
   }
 
-  async login(input: LoginRequest, device: DeviceContext = {}): Promise<AuthResult> {
+  async login(
+    input: LoginRequest,
+    device: DeviceContext = {},
+    pendingGoogle: PendingGoogleLink | null = null,
+  ): Promise<AuthResult> {
     const user = await this.prisma.user.findUnique({ where: { email: input.email } });
 
-    // Same message and roughly the same work whether or not the account
-    // exists, so timing and wording do not confirm an email address.
-    if (!user || user.deletedAt) {
+    // Same message and roughly the same work whether the account does not
+    // exist or has no password (it was created with Google), so neither timing
+    // nor wording confirms an email address or how it signs in.
+    if (!user || user.deletedAt || !user.passwordHash) {
       await this.passwords.verify(input.password, DUMMY_HASH);
       throw new UnauthorizedException('Email or password is incorrect');
     }
@@ -133,11 +160,168 @@ export class AuthService {
       throw new UnauthorizedException('Email or password is incorrect');
     }
 
+    if (pendingGoogle) await this.linkPendingGoogle(user, pendingGoogle);
+
     if (this.passwords.needsRehash(user.passwordHash)) {
       const rehashed = await this.passwords.hash(input.password);
       await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash: rehashed } });
     }
 
+    const tokens = await this.tokens.issue(user, device);
+    return { tokens, session: await this.buildSession(user.id, tokens.accessTokenExpiresAt) };
+  }
+
+  /**
+   * Signs someone in with a verified Google identity, creating an account for
+   * a new address. An address that already belongs to a password account is
+   * never merged here — see `decideGoogleSignIn`.
+   */
+  async signInWithGoogle(
+    claims: GoogleClaims,
+    options: { timezone: string; device?: DeviceContext },
+    attempt = 0,
+  ): Promise<GoogleSignInOutcome> {
+    const [identity, emailOwner] = await Promise.all([
+      this.prisma.userIdentity.findUnique({
+        where: {
+          provider_providerAccountId: { provider: 'GOOGLE', providerAccountId: claims.sub },
+        },
+        include: { user: true },
+      }),
+      this.prisma.user.findUnique({ where: { email: claims.email } }),
+    ]);
+
+    // A deleted account keeps its address, so neither signing it back in nor
+    // creating a new account over it is possible.
+    if (identity?.user.deletedAt || (!identity && emailOwner?.deletedAt)) {
+      return { kind: 'rejected', reason: 'unavailable' };
+    }
+
+    const decision = decideGoogleSignIn({
+      claims,
+      linkedUserId: identity?.userId ?? null,
+      emailOwnerId: emailOwner?.id ?? null,
+    });
+
+    switch (decision.kind) {
+      case 'reject-unverified':
+        return { kind: 'rejected', reason: 'unverified' };
+
+      case 'link-required':
+        return { kind: 'link-required' };
+
+      case 'sign-in': {
+        const user = identity!.user;
+        await this.prisma.userIdentity.update({
+          where: { id: identity!.id },
+          data: { lastUsedAt: new Date(), email: claims.email },
+        });
+        // Google vouching for the address the account is registered under is
+        // as good as clicking our own verification link.
+        if (!user.emailVerifiedAt && claims.emailVerified && claims.email === user.email) {
+          await this.prisma.user.update({
+            where: { id: user.id },
+            data: { emailVerifiedAt: new Date() },
+          });
+        }
+        return {
+          kind: 'signed-in',
+          result: await this.startSession(user, options.device),
+          created: false,
+        };
+      }
+
+      case 'create': {
+        let user: User;
+        try {
+          user = await this.createUserWithWorkspace(
+            {
+              email: claims.email,
+              passwordHash: null,
+              displayName: googleDisplayName(claims),
+              avatarUrl: claims.picture,
+              timezone: options.timezone,
+              emailVerifiedAt: new Date(),
+              identities: {
+                create: {
+                  provider: 'GOOGLE',
+                  providerAccountId: claims.sub,
+                  email: claims.email,
+                },
+              },
+            },
+            `${googleDisplayName(claims)}'s workspace`,
+          );
+        } catch (error) {
+          // Two callbacks for the same person raced (a double click, two tabs)
+          // and the other one created the account first. Deciding again now
+          // finds it — as a linked identity, or as an owned address.
+          if (isUniqueViolation(error) && attempt === 0) {
+            return this.signInWithGoogle(claims, options, attempt + 1);
+          }
+          throw error;
+        }
+        return {
+          kind: 'signed-in',
+          result: await this.startSession(user, options.device),
+          created: true,
+        };
+      }
+    }
+  }
+
+  /**
+   * Attaches a Google identity that was waiting on a password sign-in.
+   *
+   * Only when the address Google verified is the one this account is
+   * registered under, only when that Google account isn't already someone
+   * else's, and never replacing a Google identity the account already has.
+   * Anything else is dropped quietly: the password sign-in still succeeds.
+   */
+  private async linkPendingGoogle(user: User, pending: PendingGoogleLink): Promise<void> {
+    if (pending.email !== user.email) return;
+
+    const [bySub, byUser] = await Promise.all([
+      this.prisma.userIdentity.findUnique({
+        where: {
+          provider_providerAccountId: { provider: 'GOOGLE', providerAccountId: pending.sub },
+        },
+        select: { userId: true },
+      }),
+      this.prisma.userIdentity.findUnique({
+        where: { userId_provider: { userId: user.id, provider: 'GOOGLE' } },
+        select: { providerAccountId: true },
+      }),
+    ]);
+    if (bySub || byUser) return;
+
+    try {
+      await this.prisma.$transaction([
+        this.prisma.userIdentity.create({
+          data: {
+            userId: user.id,
+            provider: 'GOOGLE',
+            providerAccountId: pending.sub,
+            email: pending.email,
+          },
+        }),
+        // The pending link is only ever issued for an address Google verified.
+        ...(user.emailVerifiedAt
+          ? []
+          : [
+              this.prisma.user.update({
+                where: { id: user.id },
+                data: { emailVerifiedAt: new Date() },
+              }),
+            ]),
+      ]);
+      this.logger.log(`Linked a Google identity to user ${user.id}`);
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+    }
+  }
+
+  private async startSession(user: User, device: DeviceContext = {}): Promise<AuthResult> {
     const tokens = await this.tokens.issue(user, device);
     return { tokens, session: await this.buildSession(user.id, tokens.accessTokenExpiresAt) };
   }
@@ -170,6 +354,12 @@ export class AuthService {
     newPassword: string,
   ): Promise<void> {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+
+    if (!user.passwordHash) {
+      throw new BadRequestException(
+        'This account signs in with Google and has no password yet. Use "Forgot password" to set one.',
+      );
+    }
 
     if (!(await this.passwords.verify(currentPassword, user.passwordHash))) {
       throw new UnauthorizedException('Your current password is incorrect');
@@ -353,6 +543,16 @@ export function slugify(value: string): string {
       .replace(/^-+|-+$/g, '')
       .slice(0, 48)
   );
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
+
+/** Google's name for the person, or the part of the address before the @. */
+function googleDisplayName(claims: GoogleClaims): string {
+  const name = claims.name ?? claims.email.split('@')[0] ?? 'Trader';
+  return name.slice(0, 80) || 'Trader';
 }
 
 function hashToken(token: string): string {
