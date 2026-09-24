@@ -190,13 +190,13 @@ export class GoogleAuthController {
   }
 
   /**
-   * Absolute, on the web origin: these routes are reached through the web
-   * app's /api rewrite, and a relative Location would also land there, but an
-   * absolute one keeps a direct hit on the API port from stranding the user.
+   * Relative on purpose. These routes are only ever reached through the web
+   * app's /api rewrite, so the browser resolves the path against the origin it
+   * is actually on. An absolute URL built from WEB_URL would send everyone to
+   * localhost the moment that variable is missing in a deployment.
    */
   private webUrl(path: string): string {
-    const base = (this.config.get<string>('WEB_URL') ?? 'http://localhost:3000').replace(/\/$/, '');
-    return `${base}${path}`;
+    return path;
   }
 }
 

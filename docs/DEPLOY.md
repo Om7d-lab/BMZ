@@ -234,12 +234,13 @@ and every post-sign-in redirect are built from it. Redeploy the API.
 
 ### Troubleshooting
 
-| Symptom on Google's screen / our sign-in page      | Cause                                                                                                                                      |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `redirect_uri_mismatch`                            | The URI in Console doesn't match `${WEB_URL}/api/v1/auth/google/callback` character for character (scheme, host, port, no trailing slash). |
-| "Google sign-in isn't available right now"         | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` not set on the API.                                                                            |
-| "…took too long or was started in another browser" | The 10-minute sign-in window expired, or the browser blocks cookies for this site, which drops the short-lived `bmz_oauth_tx` cookie.      |
-| `access_blocked` / "app not verified"              | The consent screen is in _Testing_ and the Google account isn't a listed test user.                                                        |
+| Symptom on Google's screen / our sign-in page      | Cause                                                                                                                                                                      |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Google or a reset email sends you to `localhost`   | `WEB_URL` is unset on the API, so it defaults to `http://localhost:3000`. Set it to the web app's public origin and redeploy; the API logs a warning at boot until you do. |
+| `redirect_uri_mismatch`                            | The URI in Console doesn't match `${WEB_URL}/api/v1/auth/google/callback` character for character (scheme, host, port, no trailing slash).                                 |
+| "Google sign-in isn't available right now"         | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` not set on the API.                                                                                                            |
+| "…took too long or was started in another browser" | The 10-minute sign-in window expired, or the browser blocks cookies for this site, which drops the short-lived `bmz_oauth_tx` cookie.                                      |
+| `access_blocked` / "app not verified"              | The consent screen is in _Testing_ and the Google account isn't a listed test user.                                                                                        |
 
 ---
 

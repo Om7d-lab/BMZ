@@ -120,9 +120,23 @@ export function validateEnvironment(raw: Record<string, unknown>): Environment {
     if (env.JWT_ACCESS_SECRET === env.JWT_REFRESH_SECRET) {
       throw new Error('JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must differ');
     }
+    // A warning rather than a refusal, so an existing deploy keeps serving —
+    // but password-reset links and the Google redirect URI are built from
+    // WEB_URL, and both point at localhost until it is set.
+    if (isLocalhost(env.WEB_URL)) {
+      console.warn(
+        `WEB_URL is ${env.WEB_URL} in production. Set it to the web app's public origin, ` +
+          'or password-reset emails and Google sign-in will send people to localhost.',
+      );
+    }
   }
 
   return env;
+}
+
+function isLocalhost(url: string): boolean {
+  const { hostname } = new URL(url);
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
 }
 
 /** Splits the configured origin list. CORS with credentials needs exact origins. */
