@@ -1,35 +1,33 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { RegisterForm } from '@/components/auth/RegisterForm';
-import { AuthShell } from '@/components/ui/auth-shell';
+import { AuthHeading } from '@/components/auth/AuthFrame';
 import { AuthDivider, GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 
 export const metadata: Metadata = { title: 'Create your account' };
 
 export default function RegisterPage() {
   return (
-    <AuthShell>
-      <div className="card p-6">
-        <h1 className="text-lg font-semibold tracking-tight text-ink">Start your journal</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          Free while we build it. No card, no trial clock.
-        </p>
+    <>
+      {/* Mirrors sign-in, so the switch link sits in the same place on both. */}
+      <AuthHeading title="Start your journal">
+        Already have an account?{' '}
+        <Link href="/login" className="font-medium text-brand hover:underline">
+          Sign in
+        </Link>
+      </AuthHeading>
 
-        <GoogleSignInButton label="Sign up with Google" className="mt-6" />
+      <GoogleSignInButton label="Sign up with Google" className="mt-8" />
 
-        <div className="mt-6">
-          <AuthDivider>or use your email</AuthDivider>
-        </div>
-
-        <RegisterForm />
-
-        <p className="mt-6 text-center text-xs text-ink-subtle">
-          Already have an account?{' '}
-          <Link href="/login" className="text-brand hover:underline">
-            Sign in
-          </Link>
-        </p>
+      <div className="mt-6">
+        <AuthDivider>or use your email</AuthDivider>
       </div>
-    </AuthShell>
+
+      <RegisterForm />
+
+      <p className="mt-6 text-center text-xs text-ink-subtle">
+        Free while we build it. No card, no trial clock.
+      </p>
+    </>
   );
 }

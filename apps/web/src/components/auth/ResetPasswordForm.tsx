@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { apiRequest, ApiRequestError } from '@/lib/api';
+import { AuthHeading } from '@/components/auth/AuthFrame';
 import { Button, Field, Input, Spinner } from '@/components/ui';
 
 /** Mirrors the server's policy in @bmz/contracts: length, nothing else. */
@@ -58,11 +59,10 @@ export function ResetPasswordForm() {
 
   if (!token) {
     return (
-      <div className="card p-6">
-        <h1 className="text-lg font-semibold tracking-tight text-ink">That link looks wrong</h1>
-        <p className="mt-2 text-sm leading-relaxed text-ink-muted">
+      <div>
+        <AuthHeading title="That link looks wrong">
           This page needs the link from your reset email. Ask for a new one and try again.
-        </p>
+        </AuthHeading>
         <Link
           href="/forgot-password"
           className="mt-6 inline-flex w-full items-center justify-center rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-canvas transition-colors hover:bg-brand-strong"
@@ -75,16 +75,15 @@ export function ResetPasswordForm() {
 
   if (done) {
     return (
-      <div className="card p-6">
+      <div>
         <span className="mb-4 grid size-10 place-items-center rounded-lg bg-brand-soft text-brand">
           <CheckCircle2 className="size-5" aria-hidden />
         </span>
 
-        <h1 className="text-lg font-semibold tracking-tight text-ink">Password changed</h1>
-        <p className="mt-2 text-sm leading-relaxed text-ink-muted">
+        <AuthHeading title="Password changed">
           Your password has been updated and every other session was signed out. Sign in with your
           new password to continue.
-        </p>
+        </AuthHeading>
 
         <Link
           href="/login"
@@ -97,13 +96,12 @@ export function ResetPasswordForm() {
   }
 
   return (
-    <div className="card p-6">
-      <h1 className="text-lg font-semibold tracking-tight text-ink">Choose a new password</h1>
-      <p className="mt-1 text-sm text-ink-muted">
+    <div>
+      <AuthHeading title="Choose a new password">
         At least {MIN_LENGTH} characters. Length beats punctuation.
-      </p>
+      </AuthHeading>
 
-      <form onSubmit={onSubmit} className="mt-6 space-y-4">
+      <form onSubmit={onSubmit} className="mt-8 space-y-4">
         <Field label="New password">
           <div className="relative">
             <Input

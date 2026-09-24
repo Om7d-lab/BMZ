@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import { MailCheck } from 'lucide-react';
 import { apiRequest, ApiRequestError } from '@/lib/api';
+import { AuthHeading } from '@/components/auth/AuthFrame';
 import { Button, Field, Input, Spinner } from '@/components/ui';
 
 /**
@@ -43,16 +44,15 @@ export function ForgotPasswordForm() {
 
   if (sent) {
     return (
-      <div className="card p-6">
+      <div>
         <span className="mb-4 grid size-10 place-items-center rounded-lg bg-brand-soft text-brand">
           <MailCheck className="size-5" aria-hidden />
         </span>
 
-        <h1 className="text-lg font-semibold tracking-tight text-ink">Check your inbox</h1>
-        <p className="mt-2 text-sm leading-relaxed text-ink-muted">
+        <AuthHeading title="Check your inbox">
           If an account exists for that address, we&apos;ve sent a link to reset your password. It
           expires in an hour and can only be used once.
-        </p>
+        </AuthHeading>
 
         <p className="mt-6 text-center text-xs text-ink-subtle">
           <Link href="/login" className="text-brand hover:underline">
@@ -64,13 +64,12 @@ export function ForgotPasswordForm() {
   }
 
   return (
-    <div className="card p-6">
-      <h1 className="text-lg font-semibold tracking-tight text-ink">Reset your password</h1>
-      <p className="mt-1 text-sm text-ink-muted">
+    <div>
+      <AuthHeading title="Reset your password">
         Enter the address you signed up with and we&apos;ll send you a link.
-      </p>
+      </AuthHeading>
 
-      <form onSubmit={onSubmit} className="mt-6 space-y-4">
+      <form onSubmit={onSubmit} className="mt-8 space-y-4">
         <Field label="Email">
           <Input
             name="email"

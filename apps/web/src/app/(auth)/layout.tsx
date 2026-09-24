@@ -1,8 +1,9 @@
+import { AuthFrame } from '@/components/auth/AuthFrame';
+
 /**
- * The auth route group intentionally adds no chrome of its own: the sign-in
- * screen is a full-bleed split layout, while the register screen brings its own
- * centred card shell. Keeping this a pass-through lets each page own its layout.
+ * One frame for every auth screen. Living in the route group's layout, it
+ * survives navigation between them, so only the form changes on each click.
  */
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
-  return children;
+  return <AuthFrame>{children}</AuthFrame>;
 }
